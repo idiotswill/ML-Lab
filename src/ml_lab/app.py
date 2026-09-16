@@ -27,6 +27,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ML Lab")
     parser.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
     parser.add_argument(
+        "--phase-a-validator-child",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--verify-bundle-worker",
         type=Path,
         help=argparse.SUPPRESS,
@@ -70,6 +75,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.worker:
         return run_worker(args.worker)
+    if args.phase_a_validator_child:
+        from ml_lab.adapters.phase_a_reference import run_reference_validator_child
+
+        return run_reference_validator_child(args.phase_a_validator_child)
     if args.verify_bundle_worker:
         if args.verification_receipt is None:
             print("--verification-receipt is required", file=sys.stderr)

@@ -20,7 +20,7 @@ class JobSpec:
         path.write_text(json.dumps(asdict(self), indent=2, sort_keys=True), encoding="utf-8")
 
     @classmethod
-    def read(cls, path: Path) -> "JobSpec":
+    def read(cls, path: Path) -> JobSpec:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if payload.get("protocol_version") != JOB_PROTOCOL_VERSION:
             raise ValueError("Incompatible job protocol version.")
@@ -28,4 +28,5 @@ class JobSpec:
 
 
 def event(kind: str, **fields: Any) -> str:
-    return json.dumps({"protocol_version": JOB_PROTOCOL_VERSION, "kind": kind, **fields}, sort_keys=True)
+    payload = {"protocol_version": JOB_PROTOCOL_VERSION, "kind": kind, **fields}
+    return json.dumps(payload, sort_keys=True)

@@ -19,7 +19,11 @@ from ml_lab.storage.workspace import Workspace
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ML Lab")
     parser.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
-    parser.add_argument("--smoke-test", action="store_true", help="Run a non-GUI installation smoke test.")
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help="Run a non-GUI installation smoke test.",
+    )
     parser.add_argument("--job-smoke-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--qml-smoke-test", action="store_true", help=argparse.SUPPRESS)
     return parser

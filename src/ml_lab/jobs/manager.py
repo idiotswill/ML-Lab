@@ -16,7 +16,12 @@ from ml_lab.storage.database import Database
 
 
 class JobManager:
-    def __init__(self, workspace_root: Path, database: Database, artifacts: ArtifactStore | None = None):
+    def __init__(
+        self,
+        workspace_root: Path,
+        database: Database,
+        artifacts: ArtifactStore | None = None,
+    ):
         self.workspace_root = workspace_root
         self.database = database
         self.artifacts = artifacts
@@ -29,7 +34,8 @@ class JobManager:
         now = utc_now_iso()
         with self.database.transaction() as conn:
             cursor = conn.execute(
-                "UPDATE jobs SET status=?, updated_at=?, message=? WHERE status IN (?, ?, ?)",
+                "UPDATE jobs SET status=?, updated_at=?, message=? "
+                "WHERE status IN (?, ?, ?)",
                 (
                     JobStatus.INTERRUPTED.value,
                     now,
@@ -41,18 +47,29 @@ class JobManager:
             )
             return int(cursor.rowcount)
 
-    def start(self, task_type: str, payload: dict[str, Any] | None = None) -> JobRecord:
+    def start(
+        self,
+        task_type: str,
+        payload: dict[str, Any] | None = None,
+    ) -> JobRecord:
         job_id = str(uuid.uuid4())
         correlation_id = uuid.uuid4().hex[:12]
         staging = self.jobs_root / job_id
         staging.mkdir(parents=True, exist_ok=False)
-        spec = JobSpec(job_id=job_id, task_type=task_type, staging_dir=str(staging), payload=payload or {})
+        spec = JobSpec(
+            job_id=job_id,
+            task_type=task_type,
+            staging_dir=str(staging),
+            payload=payload or {},
+        )
         spec_path = staging / "job_spec.json"
         spec.write(spec_path)
         now = utc_now_iso()
         with self.database.transaction() as conn:
             conn.execute(
-                "INSERT INTO jobs(id,task_type,status,progress,message,staging_dir,correlation_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO jobs("
+                "id,task_type,status,progress,message,staging_dir,correlation_id,created_at,updated_at"
+                ") VALUES(?,?,?,?,?,?,?,?,?)",
                 (
                     job_id,
                     task_type,
@@ -93,8 +110,15 @@ class JobManager:
         record = self.get(job_id)
         if record.status not in {JobStatus.QUEUED, JobStatus.RUNNING}:
             return
-        (record.staging_dir / "cancel.request").write_text(utc_now_iso(), encoding="utf-8")
-        self._update(job_id, status=JobStatus.CANCELLING, message="Cancellation requested")
+        (record.staging_dir / "cancel.request").write_text(
+            utc_now_iso(),
+            encoding="utf-8",
+        )
+        self._update(
+            job_id,
+            status=JobStatus.CANCELLING,
+            message="Cancellation requested",
+        )
         timer = threading.Timer(3.0, self._terminate_if_running, args=(job_id,))
         timer.daemon = True
         timer.start()
@@ -121,7 +145,10 @@ class JobManager:
             if process.poll() is None:
                 try:
                     record = self.get(job_id)
-                    (record.staging_dir / "cancel.request").write_text(utc_now_iso(), encoding="utf-8")
+                    (record.staging_dir / "cancel.request").write_text(
+                        utc_now_iso(),
+                        encoding="utf-8",
+                    )
                     process.terminate()
                 except (OSError, KeyError):
                     pass
@@ -133,11 +160,19 @@ class JobManager:
             return
         try:
             process.terminate()
-            self._update(job_id, message="Worker did not stop cooperatively; termination requested")
+            self._update(
+                job_id,
+                message="Worker did not stop cooperatively; termination requested",
+            )
         except OSError:
             return
 
-    def _monitor(self, job_id: str, process: subprocess.Popen[str], staging: Path) -> None:
+    def _monitor(
+        self,
+        job_id: str,
+        process: subprocess.Popen[str],
+        staging: Path,
+    ) -> None:
         event_log = staging / "events.jsonl"
         stderr_log = staging / "stderr.log"
         assert process.stdout is not None
@@ -163,9 +198,15 @@ class JobManager:
                         message=str(payload.get("message", "Completed")),
                     )
                 elif kind == "failed":
-                    self._update(job_id, error=str(payload.get("error", "Worker failed")))
+                    self._update(
+                        job_id,
+                        error=str(payload.get("error", "Worker failed")),
+                    )
                 elif kind == "cancelled":
-                    self._update(job_id, message=str(payload.get("message", "Cancelled")))
+                    self._update(
+                        job_id,
+                        message=str(payload.get("message", "Cancelled")),
+                    )
 
         stderr = process.stderr.read() if process.stderr is not None else ""
         if stderr:
@@ -191,7 +232,9 @@ class JobManager:
                         metadata={"job_id": job_id, "kind": "result"},
                     ).digest
             except Exception as exc:
-                artifact_error = f"Artifact finalization failed: {type(exc).__name__}: {exc}"
+                artifact_error = (
+                    f"Artifact finalization failed: {type(exc).__name__}: {exc}"
+                )
 
         if artifact_error is not None:
             final = JobStatus.FAILED
@@ -204,7 +247,9 @@ class JobManager:
             error = current.error
         else:
             final = JobStatus.FAILED
-            error = current.error or (stderr.strip() if stderr else f"Worker exited with code {code}")
+            error = current.error or (
+                stderr.strip() if stderr else f"Worker exited with code {code}"
+            )
 
         self._update(
             job_id,

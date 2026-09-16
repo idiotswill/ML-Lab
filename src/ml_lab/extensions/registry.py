@@ -26,4 +26,7 @@ class ManifestRegistry:
         return manifest
 
     def list(self) -> list[ExtensionManifest]:
-        return sorted(self._items.values(), key=lambda item: (item.display_name.casefold(), item.version))
+        return sorted(
+            self._items.values(),
+            key=lambda item: (item.display_name.casefold(), item.version),
+        )

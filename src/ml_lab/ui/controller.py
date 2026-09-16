@@ -5,7 +5,7 @@ import logging
 import zipfile
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Property, QTimer, Qt, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
 from ml_lab.core.config import AppConfig, user_config_dir
@@ -37,7 +37,8 @@ class AppController(QObject):
         self._poller = QTimer(self)
         self._poller.setInterval(400)
         self._poller.timeout.connect(self._poll_jobs)
-        QGuiApplication.styleHints().colorSchemeChanged.connect(lambda _scheme: self.themeChanged.emit())
+        color_scheme_changed = QGuiApplication.styleHints().colorSchemeChanged
+        color_scheme_changed.connect(lambda _scheme: self.themeChanged.emit())
         if self._config.recent_workspace:
             candidate = Path(self._config.recent_workspace)
             try:
@@ -127,7 +128,12 @@ class AppController(QObject):
         if not self._services:
             self.errorRaised.emit("No workspace", "Create or open a workspace first.")
             return
-        if self._catalog and adapter_id not in {item["id"] for item in self._catalog.adapter_options()}:
+        registered_adapters = (
+            {item["id"] for item in self._catalog.adapter_options()}
+            if self._catalog
+            else set()
+        )
+        if adapter_id not in registered_adapters:
             self.errorRaised.emit("Adapter error", f"Adapter '{adapter_id}' is not registered.")
             return
         try:
@@ -219,7 +225,10 @@ class AppController(QObject):
                 "jobs": self.jobs,
             }
             with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-                archive.writestr("diagnostics.json", json.dumps(summary, indent=2, sort_keys=True))
+                archive.writestr(
+                    "diagnostics.json",
+                    json.dumps(summary, indent=2, sort_keys=True),
+                )
                 app_log_dir = user_config_dir() / "logs"
                 if app_log_dir.exists():
                     for log in sorted(app_log_dir.glob("*.log*")):
@@ -253,7 +262,11 @@ class AppController(QObject):
             self._diagnostics = {}
         else:
             info = self._services.diagnostics().to_dict()
-            catalog = self._catalog.summary() if self._catalog else {"adapters": 0, "runtimes": 0, "errors": []}
+            catalog = (
+                self._catalog.summary()
+                if self._catalog
+                else {"adapters": 0, "runtimes": 0, "errors": []}
+            )
             self._diagnostics = {
                 "os": f"{info['os']} {info['architecture']}",
                 "cpu": info["cpu"],

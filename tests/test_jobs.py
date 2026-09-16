@@ -1,16 +1,23 @@
-from pathlib import Path
 import time
+from pathlib import Path
 
 from ml_lab.core.models import JobStatus
 from ml_lab.jobs.manager import JobManager, _worker_command
 from ml_lab.storage.workspace import Workspace
+
+TERMINAL = {
+    JobStatus.COMPLETED,
+    JobStatus.FAILED,
+    JobStatus.CANCELLED,
+    JobStatus.INTERRUPTED,
+}
 
 
 def wait_terminal(manager: JobManager, job_id: str, timeout: float = 5.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         record = manager.get(job_id)
-        if record.status in {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.INTERRUPTED}:
+        if record.status in TERMINAL:
             return record
         time.sleep(0.03)
     raise AssertionError("job did not finish")
@@ -40,8 +47,20 @@ def test_reconcile_marks_inflight_jobs_interrupted(tmp_path: Path) -> None:
     now = "2026-01-01T00:00:00+00:00"
     with workspace.database.transaction() as conn:
         conn.execute(
-            "INSERT INTO jobs(id,task_type,status,progress,message,staging_dir,correlation_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
-            ("dead", "core.self_test", "RUNNING", 0.3, "Running", str(tmp_path / "dead"), "corr", now, now),
+            "INSERT INTO jobs("
+            "id,task_type,status,progress,message,staging_dir,correlation_id,created_at,updated_at"
+            ") VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                "dead",
+                "core.self_test",
+                "RUNNING",
+                0.3,
+                "Running",
+                str(tmp_path / "dead"),
+                "corr",
+                now,
+                now,
+            ),
         )
     assert manager.reconcile_startup() == 1
     assert manager.get("dead").status is JobStatus.INTERRUPTED
@@ -49,6 +68,7 @@ def test_reconcile_marks_inflight_jobs_interrupted(tmp_path: Path) -> None:
 
 def test_worker_command_uses_python_module_in_dev(monkeypatch, tmp_path: Path) -> None:
     import ml_lab.jobs.manager as manager_module
+
     monkeypatch.setattr(manager_module.sys, "executable", "python.exe")
     command = _worker_command(tmp_path / "spec.json")
     assert command[1:3] == ["-m", "ml_lab.jobs.worker"]
@@ -56,7 +76,12 @@ def test_worker_command_uses_python_module_in_dev(monkeypatch, tmp_path: Path) -
 
 def test_worker_command_uses_compiled_entrypoint(monkeypatch, tmp_path: Path) -> None:
     import ml_lab.jobs.manager as manager_module
-    monkeypatch.setattr(manager_module.sys, "executable", r"C:\Program Files\ML Lab\MLLab.exe")
+
+    monkeypatch.setattr(
+        manager_module.sys,
+        "executable",
+        r"C:\Program Files\ML Lab\MLLab.exe",
+    )
     command = _worker_command(tmp_path / "spec.json")
     assert command[1] == "--worker"
 

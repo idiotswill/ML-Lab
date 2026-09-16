@@ -4,8 +4,8 @@ import hashlib
 import json
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from ml_lab.jobs.protocol import JobSpec, event
 
@@ -27,7 +27,11 @@ def task_self_test(spec: JobSpec, staging: Path) -> dict[str, object]:
         if _cancelled(staging):
             raise InterruptedError("Cancellation requested")
         time.sleep(delay)
-        _emit("progress", progress=(index + 1) / steps, message=f"Self-test step {index + 1}/{steps}")
+        _emit(
+            "progress",
+            progress=(index + 1) / steps,
+            message=f"Self-test step {index + 1}/{steps}",
+        )
     return {"ok": True, "steps": steps}
 
 

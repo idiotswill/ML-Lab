@@ -10,6 +10,15 @@ from ml_lab.storage.artifacts import ArtifactStore
 from ml_lab.storage.database import Database
 
 WORKSPACE_MARKER = ".ml-lab-workspace.json"
+WORKSPACE_DIRECTORIES = (
+    "artifacts",
+    "jobs",
+    "cache",
+    "exports",
+    "logs",
+    "extensions/adapters",
+    "extensions/runtimes",
+)
 
 
 class Workspace:
@@ -19,22 +28,23 @@ class Workspace:
         self.artifacts = ArtifactStore(self.root / "artifacts", self.database)
 
     @classmethod
-    def create(cls, root: Path) -> "Workspace":
+    def create(cls, root: Path) -> Workspace:
         root = root.expanduser().resolve()
         root.mkdir(parents=True, exist_ok=True)
         marker = root / WORKSPACE_MARKER
         if not marker.exists():
             marker.write_text(
-                json.dumps({"format": 1, "created_at": utc_now_iso()}, indent=2), encoding="utf-8"
+                json.dumps({"format": 1, "created_at": utc_now_iso()}, indent=2),
+                encoding="utf-8",
             )
-        for child in ("artifacts", "jobs", "cache", "exports", "logs", "extensions/adapters", "extensions/runtimes"):
+        for child in WORKSPACE_DIRECTORIES:
             (root / child).mkdir(parents=True, exist_ok=True)
         workspace = cls(root)
         workspace.database.migrate()
         return workspace
 
     @classmethod
-    def open(cls, root: Path) -> "Workspace":
+    def open(cls, root: Path) -> Workspace:
         root = root.expanduser().resolve()
         if not (root / WORKSPACE_MARKER).exists():
             raise ValueError(f"{root} is not an ML Lab workspace.")
@@ -42,7 +52,12 @@ class Workspace:
         workspace.database.migrate()
         return workspace
 
-    def create_project(self, name: str, adapter_id: str = "generic", description: str = "") -> Project:
+    def create_project(
+        self,
+        name: str,
+        adapter_id: str = "generic",
+        description: str = "",
+    ) -> Project:
         clean_name = name.strip()
         if not clean_name:
             raise ValueError("Project name is required.")

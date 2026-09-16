@@ -7,7 +7,10 @@ import ml_lab.storage.database as database_module
 from ml_lab.storage.database import Database
 
 
-def test_migration_failure_rolls_back_all_statements(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_migration_failure_rolls_back_all_statements(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     path = tmp_path / "lab.db"
     db = Database(path)
     monkeypatch.setattr(database_module, "SCHEMA_VERSION", 1)

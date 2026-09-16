@@ -7,6 +7,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Any
 
 from ml_lab.core.models import utc_now_iso
 from ml_lab.storage.database import Database
@@ -31,7 +32,11 @@ class ArtifactStore:
         return self.sha_root / digest[:2] / digest[2:4] / digest
 
     def commit_bytes(
-        self, data: bytes, *, media_type: str = "application/octet-stream", metadata: dict | None = None
+        self,
+        data: bytes,
+        *,
+        media_type: str = "application/octet-stream",
+        metadata: dict[str, Any] | None = None,
     ) -> ArtifactRef:
         digest = hashlib.sha256(data).hexdigest()
         target = self._target(digest)
@@ -44,14 +49,18 @@ class ArtifactStore:
                 temp_path = Path(tmp.name)
             try:
                 if hashlib.sha256(temp_path.read_bytes()).hexdigest() != digest:
-                    raise IOError("Artifact hash verification failed before commit.")
+                    raise OSError("Artifact hash verification failed before commit.")
                 os.replace(temp_path, target)
             finally:
                 temp_path.unlink(missing_ok=True)
         return self._register(target, digest, len(data), media_type, metadata or {})
 
     def commit_file(
-        self, source: Path, *, media_type: str = "application/octet-stream", metadata: dict | None = None
+        self,
+        source: Path,
+        *,
+        media_type: str = "application/octet-stream",
+        metadata: dict[str, Any] | None = None,
     ) -> ArtifactRef:
         digest, size = _hash_file(source)
         target = self._target(digest)
@@ -66,7 +75,7 @@ class ArtifactStore:
                     os.fsync(dst.fileno())
                 copied_digest, copied_size = _hash_file(temp_path)
                 if copied_digest != digest or copied_size != size:
-                    raise IOError("Artifact changed or failed verification during commit.")
+                    raise OSError("Artifact changed or failed verification during commit.")
                 os.replace(temp_path, target)
             finally:
                 temp_path.unlink(missing_ok=True)
@@ -78,19 +87,25 @@ class ArtifactStore:
             raise FileNotFoundError(f"Artifact {digest} is not present.")
         actual, _ = _hash_file(path)
         if actual != digest:
-            raise IOError(f"Artifact {digest} is corrupt.")
+            raise OSError(f"Artifact {digest} is corrupt.")
         return path
 
     def _register(
-        self, path: Path, digest: str, size: int, media_type: str, metadata: dict
+        self,
+        path: Path,
+        digest: str,
+        size: int,
+        media_type: str,
+        metadata: dict[str, Any],
     ) -> ArtifactRef:
         relative = path.relative_to(self.root).as_posix()
+        metadata_json = json.dumps(metadata, sort_keys=True)
         with self.database.transaction() as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO artifacts"
                 "(digest,size_bytes,media_type,relative_path,created_at,metadata_json) "
                 "VALUES(?,?,?,?,?,?)",
-                (digest, size, media_type, relative, utc_now_iso(), json.dumps(metadata, sort_keys=True)),
+                (digest, size, media_type, relative, utc_now_iso(), metadata_json),
             )
         return ArtifactRef(digest, size, media_type, path)
 

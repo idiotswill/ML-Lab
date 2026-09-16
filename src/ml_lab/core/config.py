@@ -14,7 +14,7 @@ class AppConfig:
     theme: str = "system"
 
     @classmethod
-    def load(cls, path: Path) -> "AppConfig":
+    def load(cls, path: Path) -> AppConfig:
         if not path.exists():
             return cls()
         try:

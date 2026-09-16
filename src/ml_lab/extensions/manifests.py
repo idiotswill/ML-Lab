@@ -21,7 +21,12 @@ class ExtensionManifest:
     config_schema: dict[str, Any]
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any], *, expected_kind: str) -> "ExtensionManifest":
+    def from_dict(
+        cls,
+        payload: dict[str, Any],
+        *,
+        expected_kind: str,
+    ) -> ExtensionManifest:
         required = ("id", "version", "protocol_version", "display_name")
         missing = [key for key in required if key not in payload]
         if missing:

@@ -21,5 +21,5 @@ def test_corrupt_artifact_is_rejected(tmp_path: Path) -> None:
     workspace = Workspace.create(tmp_path / "lab")
     artifact = workspace.artifacts.commit_bytes(b"original")
     artifact.path.write_bytes(b"tampered")
-    with pytest.raises(IOError):
+    with pytest.raises(OSError):
         workspace.artifacts.resolve(artifact.digest)

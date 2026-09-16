@@ -39,8 +39,12 @@ class ExtensionCatalog:
         self.adapters = ManifestRegistry("adapter")
         self.runtimes = ManifestRegistry("runtime")
         self.errors.clear()
-        self.adapters.register(ExtensionManifest.from_dict(BUILTIN_ADAPTER, expected_kind="adapter"))
-        self.runtimes.register(ExtensionManifest.from_dict(BUILTIN_RUNTIME, expected_kind="runtime"))
+        self.adapters.register(
+            ExtensionManifest.from_dict(BUILTIN_ADAPTER, expected_kind="adapter")
+        )
+        self.runtimes.register(
+            ExtensionManifest.from_dict(BUILTIN_RUNTIME, expected_kind="runtime")
+        )
         self._scan(self.workspace_root / "extensions" / "adapters", self.adapters)
         self._scan(self.workspace_root / "extensions" / "runtimes", self.runtimes)
 

@@ -4,6 +4,7 @@ import json
 import logging
 import zipfile
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import Property, QObject, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
@@ -261,22 +262,22 @@ class AppController(QObject):
         if not self._services:
             self._diagnostics = {}
         else:
-            info = self._services.diagnostics().to_dict()
-            catalog = (
+            hardware = self._services.diagnostics()
+            catalog: dict[str, Any] = (
                 self._catalog.summary()
                 if self._catalog
                 else {"adapters": 0, "runtimes": 0, "errors": []}
             )
             self._diagnostics = {
-                "os": f"{info['os']} {info['architecture']}",
-                "cpu": info["cpu"],
-                "logicalCpus": info["logical_cpus"],
-                "ram": _human_bytes(info["ram_bytes"]),
-                "diskFree": _human_bytes(info["disk_free_bytes"]),
-                "gpu": info["nvidia_gpu"] or "No NVIDIA GPU detected",
+                "os": f"{hardware.os} {hardware.architecture}",
+                "cpu": hardware.cpu,
+                "logicalCpus": hardware.logical_cpus,
+                "ram": _human_bytes(hardware.ram_bytes),
+                "diskFree": _human_bytes(hardware.disk_free_bytes),
+                "gpu": hardware.nvidia_gpu or "No NVIDIA GPU detected",
                 "vram": (
-                    f"{info['nvidia_vram_mb'] / 1024:.1f} GB"
-                    if info["nvidia_vram_mb"] is not None
+                    f"{hardware.nvidia_vram_mb / 1024:.1f} GB"
+                    if hardware.nvidia_vram_mb is not None
                     else "—"
                 ),
                 "adapterCount": catalog["adapters"],
@@ -296,7 +297,7 @@ def _url_or_path(value: str) -> Path:
     return Path(value)
 
 
-def _human_bytes(value: object) -> str:
+def _human_bytes(value: int | float | None) -> str:
     if value is None:
         return "Unknown"
     amount = float(value)

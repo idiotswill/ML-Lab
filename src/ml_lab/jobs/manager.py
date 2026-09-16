@@ -236,6 +236,8 @@ class JobManager:
                     f"Artifact finalization failed: {type(exc).__name__}: {exc}"
                 )
 
+        final: JobStatus
+        error: str | None
         if artifact_error is not None:
             final = JobStatus.FAILED
             error = artifact_error

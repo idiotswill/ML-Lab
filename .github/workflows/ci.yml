@@ -28,6 +28,7 @@ jobs:
       - run: uv run pytest
       - run: uv run python -m ml_lab --smoke-test
       - run: uv run python -m ml_lab --job-smoke-test
+      - run: uv run python -m ml_lab --restart-recovery-smoke-test
       - name: QML load smoke
         env:
           QT_QPA_PLATFORM: offscreen
@@ -57,6 +58,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Compiled storage smoke failed" }
           & $exe.FullName --job-smoke-test
           if ($LASTEXITCODE -ne 0) { throw "Compiled worker smoke failed" }
+          & $exe.FullName --restart-recovery-smoke-test
+          if ($LASTEXITCODE -ne 0) { throw "Compiled restart recovery smoke failed" }
           $env:QT_QPA_PLATFORM = "offscreen"
           $env:QSG_RHI_BACKEND = "software"
           & $exe.FullName --qml-smoke-test

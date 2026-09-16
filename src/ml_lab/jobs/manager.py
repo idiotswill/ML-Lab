@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import threading
 import uuid
 from pathlib import Path
 from typing import Any
 
 from ml_lab.core.models import JobRecord, JobStatus, utc_now_iso
+from ml_lab.core.process import worker_command
 from ml_lab.jobs.protocol import JobSpec
 from ml_lab.storage.artifacts import ArtifactStore
 from ml_lab.storage.database import Database
@@ -83,7 +83,7 @@ class JobManager:
                 ),
             )
 
-        command = _worker_command(spec_path)
+        command = worker_command(spec_path)
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
         process = subprocess.Popen(
             command,
@@ -304,12 +304,3 @@ class JobManager:
             result_artifact_digest=row["result_artifact_digest"],
             event_artifact_digest=row["event_artifact_digest"],
         )
-
-
-def _worker_command(spec_path: Path) -> list[str]:
-    """Return a worker command that works in Python dev and compiled standalone builds."""
-    executable = Path(sys.executable).name.casefold()
-    python_names = {"python", "python3", "python.exe", "pythonw.exe", "pypy", "pypy3"}
-    if executable not in python_names:
-        return [sys.executable, "--worker", str(spec_path)]
-    return [sys.executable, "-m", "ml_lab.jobs.worker", str(spec_path)]

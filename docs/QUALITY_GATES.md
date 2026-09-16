@@ -1,6 +1,6 @@
 # Quality Gates
 
-Status: Phase 1 design
+Status: living gate specification
 
 These gates define when ML Lab may advance between build phases. A successful compile is not sufficient evidence.
 
@@ -40,8 +40,10 @@ Measured on a representative modern Windows laptop with SSD, warm OS caches, and
 - process start -> first interactive window: target <= 2.5 s, hard gate <= 4.0 s;
 - idle base app working set: target <= 220 MB, hard gate <= 300 MB;
 - ordinary navigation/input must not block the UI thread for >100 ms;
-- opening a project with 100k indexed examples must not eagerly materialize all rows;
-- scrolling virtualized tables must remain interactive while background jobs run.
+- Phase 2 project/list surfaces must not eagerly materialize unbounded collections;
+- background jobs must not starve ordinary navigation/input responsiveness.
+
+The 100k-example paging and virtualized-table budgets begin in Phase 3 when Data Studio introduces those collection surfaces. Moving those checks to the phase where the surfaces exist is an applicability correction, not a waiver.
 
 Targets are engineering budgets, not marketing promises. Regressions require measurement and justification.
 
@@ -78,7 +80,7 @@ Synthetic scale fixtures must cover at minimum:
 - interruption/restart during hashing/import/evaluation;
 - malformed/corrupt artifact and manifest handling.
 
-The UI must page/filter these collections without loading them wholesale.
+The UI must page/filter these collections without loading them wholesale. Opening a project with 100k indexed examples must not eagerly materialize all example payloads, and scrolling virtualized tables must remain interactive while background jobs run.
 
 ## Phase 4 exit — Testing-ready Windows release
 

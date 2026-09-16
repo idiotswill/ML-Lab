@@ -1,3 +1,4 @@
+import random
 from pathlib import Path
 
 from ml_lab.redteam.service import RedTeamCase, RedTeamMutator, RedTeamService
@@ -14,15 +15,16 @@ def test_redteam_suite_is_seeded_and_order_independent(tmp_path: Path) -> None:
         RedTeamCase("case-a", {"text": "hit the goblin"}, {"decision": "NO_ACTION"}),
     )
 
-    def append_noise(payload: object, rng: object) -> object:
+    def append_noise(payload: object, rng: random.Random) -> object:
         assert isinstance(payload, dict)
-        chooser = getattr(rng, "choice")
-        return {**payload, "noise": chooser(["uh", "erm", "...", "pls"])}
+        return {**payload, "noise": rng.choice(["uh", "erm", "...", "pls"])}
 
-    def case_flip(payload: object, rng: object) -> object:
+    def case_flip(payload: object, rng: random.Random) -> object:
         assert isinstance(payload, dict)
-        chooser = getattr(rng, "choice")
-        return {"text": str(payload["text"]).swapcase(), "suffix": chooser(["?", "!", "..."])}
+        return {
+            "text": str(payload["text"]).swapcase(),
+            "suffix": rng.choice(["?", "!", "..."]),
+        }
 
     mutators = (
         RedTeamMutator("noise", append_noise),
@@ -51,10 +53,9 @@ def test_different_redteam_seed_changes_generated_cases(tmp_path: Path) -> None:
     service = RedTeamService(workspace)
     case = RedTeamCase("case", {"text": "look around"}, {"decision": "ASK"})
 
-    def mutate(payload: object, rng: object) -> object:
+    def mutate(payload: object, rng: random.Random) -> object:
         assert isinstance(payload, dict)
-        randint = getattr(rng, "randint")
-        return {**payload, "nonce": randint(0, 1_000_000)}
+        return {**payload, "nonce": rng.randint(0, 1_000_000)}
 
     mutator = RedTeamMutator("nonce", mutate)
     first = service.run_suite(

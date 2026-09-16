@@ -64,3 +64,5 @@ jobs:
           $env:QSG_RHI_BACKEND = "software"
           & $exe.FullName --qml-smoke-test
           if ($LASTEXITCODE -ne 0) { throw "Compiled QML smoke failed" }
+          & $exe.FullName --performance-probe
+          if ($LASTEXITCODE -ne 0) { throw "Compiled performance probe failed" }

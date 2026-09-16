@@ -34,6 +34,11 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           QSG_RHI_BACKEND: software
         run: uv run python -m ml_lab --qml-smoke-test
+      - name: Performance instrumentation smoke
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
+        run: uv run python -m ml_lab --performance-probe
 
   windows-standalone:
     runs-on: windows-latest

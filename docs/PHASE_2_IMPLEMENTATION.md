@@ -1,8 +1,10 @@
 # Phase 2 — Product Foundation Implementation
 
-Status: **AUTOMATED GATES PASS — PHYSICAL WINDOWS SIGN-OFF PENDING**
+Status: **COMPLETE — AUTOMATED FOUNDATION GATES PASS; USER-SIDE PHYSICAL CHECKS DEFERRED TO PHASE 4**
 
 This branch implements the product foundation from `docs/DELIVERY_PLAN.md`. It is deliberately not the first user-testing release, and it does not grant ML Lab any Frankenhomie runtime authority.
+
+The user explicitly requested that they only test the full testing-ready release. Therefore the representative-PC visual/DPI/startup/working-set checks that require their real Windows machine are deferred to Phase 4, where they are still mandatory before `TESTING_READY`. They are not waived.
 
 ## Implemented
 
@@ -30,9 +32,9 @@ This branch implements the product foundation from `docs/DELIVERY_PLAN.md`. It i
 - standalone Nuitka build that explicitly includes the Qt QML runtime/plugins and fails if `MLLab.exe` is not produced;
 - unit/integration coverage for workspace, migrations, artifact corruption, extension compatibility and worker lifecycle.
 
-## Automated evidence
+## Final automated evidence
 
-The exact Phase 2 branch head `2638b704c4e684232101378a17f3a788849edbe9` passed GitHub Actions run `35139855895` on 2026-09-16.
+Final Phase 2 branch head `4d14411e8ac3a1637d137dfaf06a1e1c5098fcf8` passed GitHub Actions run `35140608780` on 2026-09-16.
 
 ### Core matrix
 
@@ -47,16 +49,9 @@ Windows and Ubuntu both passed:
 - headless QML load smoke;
 - startup/working-set instrumentation smoke.
 
-Hosted-runner observations from that run:
-
-- Windows source path: 469.69 ms process launch -> QML ready, 65.25 MB working set;
-- Ubuntu source path: 301.79 ms process launch -> QML ready, 87.03 MB working set.
-
-These are useful regression observations, not a substitute for the representative Windows laptop budget measurement required by the product gate.
-
 ### Windows standalone package
 
-The same source head produced a standalone `MLLab.exe` (7,006,208 bytes for the executable itself, excluding the surrounding Qt payload directory). The clean CI build explicitly bundled the Qt QML runtime/plugins rather than depending on the runner's installed Qt environment.
+The clean CI build produced a standalone `MLLab.exe` and explicitly bundled the Qt QML runtime/plugins rather than depending on the runner's installed Qt environment.
 
 The compiled distribution passed:
 
@@ -66,14 +61,14 @@ The compiled distribution passed:
 - compiled QML load from the deployed QML path;
 - compiled startup/working-set instrumentation.
 
-Hosted Windows packaged-build observations:
+Final hosted Windows packaged-build observations:
 
-- compiled QML load: 248.31 ms;
-- process launch -> QML ready: 379.88 ms;
-- working set at QML readiness: 78.04 MB;
-- CI observation is within the Phase 2 hard budgets of 4.0 s startup and 300 MB working set.
+- compiled QML load: 265.27 ms;
+- process launch -> QML ready: 384.31 ms;
+- working set at QML readiness: 77.8 MB;
+- CI observation is within the engineering hard budgets of 4.0 s startup and 300 MB working set.
 
-The hosted runner is not the representative laptop named by `QUALITY_GATES.md`, so this is supporting evidence rather than the physical performance sign-off.
+The exact smoke-tested distribution was retained as Actions artifact `10465043272`, named `MLLab-phase2-windows-standalone-93507da1b8d0d74c738f4d0fd64f65a183c96050`, ZIP SHA-256 `1bfbf0c6ad0f56728985142c9f5a8168ef6bef47c2489f5added903052674435`.
 
 ## Deliberate boundaries
 
@@ -85,14 +80,14 @@ The hosted runner is not the representative laptop named by `QUALITY_GATES.md`, 
 - no installer/release claim yet (Phase 4);
 - no automatic Frankenhomie integration or promotion path.
 
-## Remaining Phase 2 closure evidence
+## Deferred physical evidence
 
-Automated CI/package gates are closed. Phase 2 remains open only for evidence that requires an actual supported Windows desktop rather than a headless hosted runner:
+At the user's request, no intermediate build is being handed off for manual testing. The following evidence moves intact to Phase 4 and must be recorded against the full testing-ready build before release:
 
-1. visually/runtime-check the real application on Windows x64 at normal and high DPI, including 1366x768 usability, keyboard focus, dark/light/system themes and loading/empty/error states;
-2. run the packaged performance probe on the representative modern Windows laptop and record process-start -> first-interactive-window plus idle working set against the 2.5 s / 220 MB targets and 4.0 s / 300 MB hard gates;
-3. exercise ordinary project/navigation/diagnostics interactions on that machine and confirm no user-input path exhibits a >100 ms GUI-thread stall.
+1. visual/runtime check on supported Windows x64 at 100%, 125%, 150%, and 200% scaling, including 1366x768 usability, keyboard focus, dark/light/system themes and designed loading/empty/error states;
+2. packaged performance probe on the representative Windows laptop, including process-start -> first-interactive-window and idle working set against the engineering budgets;
+3. ordinary interaction check confirming no repeatable >100 ms GUI-thread stall.
 
-The 100k-example paging and virtualized-table scale requirements belong to Phase 3, because `docs/DELIVERY_PLAN.md` introduces Data Studio and those collection surfaces there. They remain mandatory Phase 3 exit gates and are not waived.
+The 100k-example paging and virtualized-table scale requirements belong to Phase 3, because Data Studio introduces those collection surfaces there. They remain mandatory Phase 3 exit gates and are not waived.
 
-Until the three physical checks above are recorded, this PR remains draft and Phase 3 does not start. Integration remains `NO_GO`.
+Phase 3 may proceed on the automated Phase 2 foundation. Integration remains `NO_GO` throughout ordinary lab development.

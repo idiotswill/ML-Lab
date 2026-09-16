@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import threading
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -51,16 +53,24 @@ class JobManager:
         self,
         task_type: str,
         payload: dict[str, Any] | None = None,
+        *,
+        staged_artifacts: Mapping[str, str] | None = None,
     ) -> JobRecord:
         job_id = str(uuid.uuid4())
         correlation_id = uuid.uuid4().hex[:12]
         staging = self.jobs_root / job_id
         staging.mkdir(parents=True, exist_ok=False)
+        task_payload = dict(payload or {})
+        if staged_artifacts:
+            task_payload["staged_inputs"] = self._stage_artifacts(
+                staging,
+                staged_artifacts,
+            )
         spec = JobSpec(
             job_id=job_id,
             task_type=task_type,
             staging_dir=str(staging),
-            payload=payload or {},
+            payload=task_payload,
         )
         spec_path = staging / "job_spec.json"
         spec.write(spec_path)
@@ -152,6 +162,32 @@ class JobManager:
                     process.terminate()
                 except (OSError, KeyError):
                     pass
+
+    def _stage_artifacts(
+        self,
+        staging: Path,
+        artifacts: Mapping[str, str],
+    ) -> dict[str, str]:
+        if self.artifacts is None:
+            raise RuntimeError("Artifact staging requires an ArtifactStore.")
+        inputs = staging / "inputs"
+        inputs.mkdir(parents=False, exist_ok=False)
+        staged: dict[str, str] = {}
+        for raw_name, digest in sorted(artifacts.items()):
+            name = raw_name.strip()
+            if (
+                not name
+                or name in {".", ".."}
+                or "/" in name
+                or "\\" in name
+                or Path(name).name != name
+            ):
+                raise ValueError(f"Unsafe staged artifact name {raw_name!r}.")
+            source = self.artifacts.resolve(digest)
+            destination = inputs / name
+            shutil.copyfile(source, destination)
+            staged[name] = str(destination)
+        return staged
 
     def _terminate_if_running(self, job_id: str) -> None:
         with self._lock:

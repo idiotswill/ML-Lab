@@ -1,0 +1,72 @@
+from pathlib import Path
+import time
+
+from ml_lab.core.models import JobStatus
+from ml_lab.jobs.manager import JobManager, _worker_command
+from ml_lab.storage.workspace import Workspace
+
+
+def wait_terminal(manager: JobManager, job_id: str, timeout: float = 5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        record = manager.get(job_id)
+        if record.status in {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.INTERRUPTED}:
+            return record
+        time.sleep(0.03)
+    raise AssertionError("job did not finish")
+
+
+def test_worker_completes_and_writes_manifest(tmp_path: Path) -> None:
+    workspace = Workspace.create(tmp_path / "lab")
+    manager = JobManager(workspace.root, workspace.database)
+    record = manager.start("core.self_test", {"steps": 2, "delay": 0.01})
+    finished = wait_terminal(manager, record.id)
+    assert finished.status is JobStatus.COMPLETED
+    assert (finished.staging_dir / "result_manifest.json").exists()
+
+
+def test_cancel_worker(tmp_path: Path) -> None:
+    workspace = Workspace.create(tmp_path / "lab")
+    manager = JobManager(workspace.root, workspace.database)
+    record = manager.start("core.self_test", {"steps": 80, "delay": 0.02})
+    manager.cancel(record.id)
+    finished = wait_terminal(manager, record.id)
+    assert finished.status is JobStatus.CANCELLED
+
+
+def test_reconcile_marks_inflight_jobs_interrupted(tmp_path: Path) -> None:
+    workspace = Workspace.create(tmp_path / "lab")
+    manager = JobManager(workspace.root, workspace.database)
+    now = "2026-01-01T00:00:00+00:00"
+    with workspace.database.transaction() as conn:
+        conn.execute(
+            "INSERT INTO jobs(id,task_type,status,progress,message,staging_dir,correlation_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            ("dead", "core.self_test", "RUNNING", 0.3, "Running", str(tmp_path / "dead"), "corr", now, now),
+        )
+    assert manager.reconcile_startup() == 1
+    assert manager.get("dead").status is JobStatus.INTERRUPTED
+
+
+def test_worker_command_uses_python_module_in_dev(monkeypatch, tmp_path: Path) -> None:
+    import ml_lab.jobs.manager as manager_module
+    monkeypatch.setattr(manager_module.sys, "executable", "python.exe")
+    command = _worker_command(tmp_path / "spec.json")
+    assert command[1:3] == ["-m", "ml_lab.jobs.worker"]
+
+
+def test_worker_command_uses_compiled_entrypoint(monkeypatch, tmp_path: Path) -> None:
+    import ml_lab.jobs.manager as manager_module
+    monkeypatch.setattr(manager_module.sys, "executable", r"C:\Program Files\ML Lab\MLLab.exe")
+    command = _worker_command(tmp_path / "spec.json")
+    assert command[1] == "--worker"
+
+
+def test_worker_result_is_registered_as_immutable_artifact(tmp_path: Path) -> None:
+    workspace = Workspace.create(tmp_path / "lab")
+    manager = JobManager(workspace.root, workspace.database, workspace.artifacts)
+    record = manager.start("core.self_test", {"steps": 1, "delay": 0.0})
+    finished = wait_terminal(manager, record.id)
+    assert finished.status is JobStatus.COMPLETED
+    assert finished.result_artifact_digest
+    assert workspace.artifacts.resolve(finished.result_artifact_digest).exists()
+    assert finished.event_artifact_digest

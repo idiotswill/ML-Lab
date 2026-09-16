@@ -9,12 +9,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from ml_lab.core.models import (
+    TRAINER_VISIBLE_SPLITS,
     DatasetExample,
     DatasetPartition,
     DatasetSplit,
     DatasetState,
     DatasetVersion,
-    TRAINER_VISIBLE_SPLITS,
     utc_now_iso,
 )
 from ml_lab.datasets.leakage import (
@@ -48,12 +48,16 @@ class ImportSummary:
     imported: int
     rejected: int
     errors: tuple[ImportErrorRecord, ...]
+    import_id: str | None = None
+    error_report_artifact_digest: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
             "imported": self.imported,
             "rejected": self.rejected,
             "errors": [error.to_dict() for error in self.errors],
+            "import_id": self.import_id,
+            "error_report_artifact_digest": self.error_report_artifact_digest,
         }
 
 
@@ -130,7 +134,9 @@ class DatasetService:
 
     def get(self, dataset_id: str) -> DatasetVersion:
         with self.database.connection() as conn:
-            row = conn.execute("SELECT * FROM dataset_versions WHERE id=?", (dataset_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM dataset_versions WHERE id=?", (dataset_id,)
+            ).fetchone()
         if row is None:
             raise KeyError(f"Unknown dataset {dataset_id}")
         return _dataset_from_row(row)
@@ -138,7 +144,8 @@ class DatasetService:
     def list_for_project(self, project_id: str) -> list[DatasetVersion]:
         with self.database.connection() as conn:
             rows = conn.execute(
-                "SELECT * FROM dataset_versions WHERE project_id=? ORDER BY created_at DESC",
+                "SELECT * FROM dataset_versions "
+                "WHERE project_id=? ORDER BY created_at DESC",
                 (project_id,),
             ).fetchall()
         return [_dataset_from_row(row) for row in rows]
@@ -160,7 +167,10 @@ class DatasetService:
         rejected = 0
         source_name = source.name
 
-        with source.open("r", encoding="utf-8-sig") as handle, self.database.transaction() as conn:
+        with (
+            source.open("r", encoding="utf-8-sig") as handle,
+            self.database.transaction() as conn,
+        ):
             for line_number, raw_line in enumerate(handle, start=1):
                 if not raw_line.strip():
                     continue
@@ -170,31 +180,14 @@ class DatasetService:
                         raise ValueError("JSONL row must be an object.")
                     row = {str(key): value for key, value in decoded.items()}
                     item = validate(row, line_number, source_name)
-                    payload_json = canonical_json(item.payload)
-                    label_json = canonical_json(item.label)
-                    tags_json = canonical_json(list(item.tags))
-                    conn.execute(
-                        "INSERT INTO dataset_examples"
-                        "(dataset_id,example_id,split,source_id,lineage_group,fingerprint,"
-                        "normalized_fingerprint,near_signature,payload_json,label_json,tags_json,created_at) "
-                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (
-                            dataset_id,
-                            item.example_id,
-                            item.split.value,
-                            item.source_id,
-                            item.lineage_group,
-                            content_fingerprint(item.payload),
-                            normalized_fingerprint(item.payload),
-                            near_signature(item.payload),
-                            payload_json,
-                            label_json,
-                            tags_json,
-                            utc_now_iso(),
-                        ),
-                    )
+                    _insert_example(conn, dataset_id, item)
                     imported += 1
-                except (json.JSONDecodeError, ValueError, TypeError, sqlite3.IntegrityError) as exc:
+                except (
+                    json.JSONDecodeError,
+                    ValueError,
+                    TypeError,
+                    sqlite3.IntegrityError,
+                ) as exc:
                     rejected += 1
                     if len(errors) < max_reported_errors:
                         errors.append(
@@ -210,33 +203,56 @@ class DatasetService:
                 ") WHERE id=?",
                 (dataset_id, dataset_id),
             )
-        return ImportSummary(imported=imported, rejected=rejected, errors=tuple(errors))
+
+        import_id = str(uuid.uuid4())
+        created_at = utc_now_iso()
+        error_report_digest: str | None = None
+        if rejected:
+            report = {
+                "format_version": 1,
+                "import_id": import_id,
+                "dataset_id": dataset_id,
+                "source_name": source_name,
+                "imported": imported,
+                "rejected": rejected,
+                "errors_truncated": rejected > len(errors),
+                "errors": [error.to_dict() for error in errors],
+            }
+            ref = self.artifacts.commit_bytes(
+                (canonical_json(report) + "\n").encode("utf-8"),
+                media_type="application/vnd.ml-lab.import-errors+json",
+                metadata={"dataset_id": dataset_id, "import_id": import_id},
+            )
+            error_report_digest = ref.digest
+        with self.database.transaction() as conn:
+            conn.execute(
+                "INSERT INTO dataset_imports"
+                "(id,dataset_id,source_name,imported,rejected,"
+                "error_report_artifact_digest,created_at) VALUES(?,?,?,?,?,?,?)",
+                (
+                    import_id,
+                    dataset_id,
+                    source_name,
+                    imported,
+                    rejected,
+                    error_report_digest,
+                    created_at,
+                ),
+            )
+        return ImportSummary(
+            imported=imported,
+            rejected=rejected,
+            errors=tuple(errors),
+            import_id=import_id,
+            error_report_artifact_digest=error_report_digest,
+        )
 
     def add_example(self, dataset_id: str, item: ValidatedExampleInput) -> None:
         dataset = self.get(dataset_id)
         if dataset.state is not DatasetState.DRAFT:
             raise RuntimeError("Only DRAFT datasets can be edited.")
         with self.database.transaction() as conn:
-            conn.execute(
-                "INSERT INTO dataset_examples"
-                "(dataset_id,example_id,split,source_id,lineage_group,fingerprint,"
-                "normalized_fingerprint,near_signature,payload_json,label_json,tags_json,created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    dataset_id,
-                    item.example_id,
-                    item.split.value,
-                    item.source_id,
-                    item.lineage_group,
-                    content_fingerprint(item.payload),
-                    normalized_fingerprint(item.payload),
-                    near_signature(item.payload),
-                    canonical_json(item.payload),
-                    canonical_json(item.label),
-                    canonical_json(list(item.tags)),
-                    utc_now_iso(),
-                ),
-            )
+            _insert_example(conn, dataset_id, item)
             conn.execute(
                 "UPDATE dataset_versions SET example_count=example_count+1 WHERE id=?",
                 (dataset_id,),
@@ -271,8 +287,9 @@ class DatasetService:
     def scan_leakage(self, dataset_id: str) -> LeakageReport:
         with self.database.connection() as conn:
             rows = conn.execute(
-                "SELECT example_id,split,lineage_group,fingerprint,normalized_fingerprint,near_signature "
-                "FROM dataset_examples WHERE dataset_id=? ORDER BY example_id",
+                "SELECT example_id,split,lineage_group,fingerprint,"
+                "normalized_fingerprint,near_signature FROM dataset_examples "
+                "WHERE dataset_id=? ORDER BY example_id",
                 (dataset_id,),
             ).fetchall()
         examples = [
@@ -299,11 +316,15 @@ class DatasetService:
         report_ref = self.artifacts.commit_bytes(
             (canonical_json(report.to_dict()) + "\n").encode("utf-8"),
             media_type="application/vnd.ml-lab.leakage-report+json",
-            metadata={"dataset_id": dataset_id, "blocking_count": report.blocking_count},
+            metadata={
+                "dataset_id": dataset_id,
+                "blocking_count": report.blocking_count,
+            },
         )
         with self.database.transaction() as conn:
             conn.execute(
-                "UPDATE dataset_versions SET leakage_report_artifact_digest=? WHERE id=?",
+                "UPDATE dataset_versions "
+                "SET leakage_report_artifact_digest=? WHERE id=?",
                 (report_ref.digest, dataset_id),
             )
         if report.has_blockers:
@@ -318,7 +339,11 @@ class DatasetService:
                 ref = self.artifacts.commit_file(
                     path,
                     media_type="application/x-ndjson",
-                    metadata={"dataset_id": dataset_id, "split": split.value, "example_count": count},
+                    metadata={
+                        "dataset_id": dataset_id,
+                        "split": split.value,
+                        "example_count": count,
+                    },
                 )
                 partition_refs[split] = (ref.digest, count)
 
@@ -333,10 +358,7 @@ class DatasetService:
             "frozen_at": frozen_at,
             "leakage_report_sha256": report_ref.digest,
             "partitions": {
-                split.value: {
-                    "sha256": digest,
-                    "example_count": count,
-                }
+                split.value: {"sha256": digest, "example_count": count}
                 for split, (digest, count) in partition_refs.items()
             },
         }
@@ -350,13 +372,14 @@ class DatasetService:
             for split, (digest, count) in partition_refs.items():
                 conn.execute(
                     "INSERT INTO dataset_partitions"
-                    "(dataset_id,split,artifact_digest,example_count,partition_sha256,created_at) "
-                    "VALUES(?,?,?,?,?,?)",
+                    "(dataset_id,split,artifact_digest,example_count,"
+                    "partition_sha256,created_at) VALUES(?,?,?,?,?,?)",
                     (dataset_id, split.value, digest, count, digest, frozen_at),
                 )
-            conn.execute(
+            cursor = conn.execute(
                 "UPDATE dataset_versions SET state=?,manifest_artifact_digest=?,"
-                "leakage_report_artifact_digest=?,frozen_at=? WHERE id=? AND state=?",
+                "leakage_report_artifact_digest=?,frozen_at=? "
+                "WHERE id=? AND state=?",
                 (
                     DatasetState.FROZEN.value,
                     manifest_ref.digest,
@@ -366,12 +389,15 @@ class DatasetService:
                     DatasetState.DRAFT.value,
                 ),
             )
+            if cursor.rowcount != 1:
+                raise RuntimeError("Dataset state changed while freezing.")
         return self.get(dataset_id)
 
     def partitions(self, dataset_id: str) -> list[DatasetPartition]:
         with self.database.connection() as conn:
             rows = conn.execute(
-                "SELECT * FROM dataset_partitions WHERE dataset_id=? ORDER BY split",
+                "SELECT * FROM dataset_partitions "
+                "WHERE dataset_id=? ORDER BY split",
                 (dataset_id,),
             ).fetchall()
         return [
@@ -386,7 +412,12 @@ class DatasetService:
             for row in rows
         ]
 
-    def trainer_partition_handles(self, dataset_id: str, *, include_dev: bool = True) -> dict[str, str]:
+    def trainer_partition_handles(
+        self,
+        dataset_id: str,
+        *,
+        include_dev: bool = True,
+    ) -> dict[str, str]:
         dataset = self.get(dataset_id)
         if dataset.state is not DatasetState.FROZEN:
             raise RuntimeError("Trainer jobs require a FROZEN dataset.")
@@ -400,7 +431,8 @@ class DatasetService:
         }
         if DatasetSplit.TRAIN.value not in result:
             raise RuntimeError("Frozen dataset is missing a TRAIN partition.")
-        if not set(result).issubset({split.value for split in TRAINER_VISIBLE_SPLITS}):
+        visible = {split.value for split in TRAINER_VISIBLE_SPLITS}
+        if not set(result).issubset(visible):
             raise AssertionError("Protected partition escaped into trainer handles.")
         return result
 
@@ -408,14 +440,26 @@ class DatasetService:
         dataset = self.get(dataset_id)
         if dataset.state is not DatasetState.FROZEN:
             raise RuntimeError("Evaluation requires a FROZEN dataset.")
-        return {partition.split.value: partition.artifact_digest for partition in self.partitions(dataset_id)}
+        return {
+            partition.split.value: partition.artifact_digest
+            for partition in self.partitions(dataset_id)
+        }
 
-    def _write_partition(self, dataset_id: str, split: DatasetSplit, path: Path) -> int:
+    def _write_partition(
+        self,
+        dataset_id: str,
+        split: DatasetSplit,
+        path: Path,
+    ) -> int:
         count = 0
-        with self.database.connection() as conn, path.open("w", encoding="utf-8", newline="\n") as output:
+        with (
+            self.database.connection() as conn,
+            path.open("w", encoding="utf-8", newline="\n") as output,
+        ):
             cursor = conn.execute(
-                "SELECT example_id,split,source_id,lineage_group,payload_json,label_json,tags_json "
-                "FROM dataset_examples WHERE dataset_id=? AND split=? ORDER BY example_id",
+                "SELECT example_id,split,source_id,lineage_group,payload_json,"
+                "label_json,tags_json FROM dataset_examples "
+                "WHERE dataset_id=? AND split=? ORDER BY example_id",
                 (dataset_id, split.value),
             )
             for row in cursor:
@@ -434,7 +478,38 @@ class DatasetService:
         return count
 
 
-def _generic_validator(row: dict[str, object], line_number: int, source_name: str) -> ValidatedExampleInput:
+def _insert_example(
+    conn: sqlite3.Connection,
+    dataset_id: str,
+    item: ValidatedExampleInput,
+) -> None:
+    conn.execute(
+        "INSERT INTO dataset_examples"
+        "(dataset_id,example_id,split,source_id,lineage_group,fingerprint,"
+        "normalized_fingerprint,near_signature,payload_json,label_json,"
+        "tags_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            dataset_id,
+            item.example_id,
+            item.split.value,
+            item.source_id,
+            item.lineage_group,
+            content_fingerprint(item.payload),
+            normalized_fingerprint(item.payload),
+            near_signature(item.payload),
+            canonical_json(item.payload),
+            canonical_json(item.label),
+            canonical_json(list(item.tags)),
+            utc_now_iso(),
+        ),
+    )
+
+
+def _generic_validator(
+    row: dict[str, object],
+    line_number: int,
+    source_name: str,
+) -> ValidatedExampleInput:
     example_id = row.get("example_id")
     if not isinstance(example_id, str) or not example_id.strip():
         raise ValueError("example_id must be a non-empty string")

@@ -5,7 +5,13 @@ from pathlib import Path
 
 from ml_lab.bundles.service import BundleService
 from ml_lab.bundles.verify import verify_bundle_file
-from ml_lab.core.models import DatasetSplit, FailureSeverity, MetricDirection, MetricValue, ModelStage
+from ml_lab.core.models import (
+    DatasetSplit,
+    FailureSeverity,
+    MetricDirection,
+    MetricValue,
+    ModelStage,
+)
 from ml_lab.datasets.service import DatasetService, ValidatedExampleInput
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.failures.service import FailureService

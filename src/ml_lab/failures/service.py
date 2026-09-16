@@ -69,9 +69,9 @@ class FailureService:
         with self.database.transaction() as conn:
             conn.execute(
                 "INSERT INTO failures"
-                "(id,project_id,experiment_id,dataset_id,redteam_run_id,example_id,split,kind,"
-                "severity,status,expected_json,observed_json,evidence_artifact_digest,created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "(id,project_id,experiment_id,dataset_id,redteam_run_id,example_id,"
+                "split,kind,severity,status,expected_json,observed_json,"
+                "evidence_artifact_digest,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     record.id,
                     record.project_id,
@@ -93,7 +93,9 @@ class FailureService:
 
     def get(self, failure_id: str) -> FailureRecord:
         with self.database.connection() as conn:
-            row = conn.execute("SELECT * FROM failures WHERE id=?", (failure_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM failures WHERE id=?", (failure_id,)
+            ).fetchone()
         if row is None:
             raise KeyError(f"Unknown failure {failure_id}")
         return _failure_from_row(row)
@@ -124,24 +126,35 @@ class FailureService:
             ).fetchall()
         return [_failure_from_row(row) for row in rows]
 
-    def promote_to_regression(self, failure_id: str, *, suite_name: str = "default") -> None:
+    def promote_to_regression(
+        self,
+        failure_id: str,
+        *,
+        suite_name: str = "default",
+    ) -> None:
         clean_suite = suite_name.strip()
         if not clean_suite:
             raise ValueError("Regression suite name is required.")
         self.get(failure_id)
         with self.database.transaction() as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO regression_cases(failure_id,suite_name,promoted_at) "
-                "VALUES(?,?,?)",
+                "INSERT OR IGNORE INTO regression_cases"
+                "(failure_id,suite_name,promoted_at) VALUES(?,?,?)",
                 (failure_id, clean_suite, utc_now_iso()),
             )
 
-    def regression_cases(self, *, suite_name: str = "default", limit: int = 1000) -> list[FailureRecord]:
+    def regression_cases(
+        self,
+        *,
+        suite_name: str = "default",
+        limit: int = 1000,
+    ) -> list[FailureRecord]:
         if not 1 <= limit <= 10000:
             raise ValueError("limit must be between 1 and 10000")
         with self.database.connection() as conn:
             rows = conn.execute(
-                "SELECT f.* FROM failures f JOIN regression_cases r ON r.failure_id=f.id "
+                "SELECT f.* FROM failures f "
+                "JOIN regression_cases r ON r.failure_id=f.id "
                 "WHERE r.suite_name=? ORDER BY r.promoted_at,f.id LIMIT ?",
                 (suite_name, limit),
             ).fetchall()
@@ -150,7 +163,8 @@ class FailureService:
     def open_veto_count(self, *, experiment_id: str) -> int:
         with self.database.connection() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) FROM failures WHERE experiment_id=? AND severity=? AND status IN (?,?)",
+                "SELECT COUNT(*) FROM failures "
+                "WHERE experiment_id=? AND severity=? AND status IN (?,?)",
                 (
                     experiment_id,
                     FailureSeverity.VETO.value,

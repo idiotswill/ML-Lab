@@ -11,6 +11,7 @@ $nuitkaArgs = @(
     "main.py",
     "--mode=standalone",
     "--enable-plugin=pyside6",
+    "--include-qt-plugins=qml",
     "--assume-yes-for-downloads",
     "--output-dir=deployment",
     "--output-filename=MLLab.exe",

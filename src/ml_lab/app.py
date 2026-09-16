@@ -277,7 +277,7 @@ def performance_probe() -> int:
     # CI runners are evidence collectors, not the representative hardware named
     # by the product gate, so budget overages are reported rather than hidden or
     # converted into environment-dependent build failures.
-    return 0 if details.get("ok") else 6
+    return 0 if details.get("ok") and working_set_mb is not None else 6
 
 
 def qml_smoke_test() -> int:
@@ -366,17 +366,25 @@ def _working_set_bytes() -> int | None:
                 ("PeakPagefileUsage", ctypes.c_size_t),
             ]
 
-        windll = getattr(ctypes, "windll", None)
-        if windll is None:
+        loader = getattr(ctypes, "WinDLL", None)
+        if loader is None:
             return None
+        kernel32 = loader("kernel32", use_last_error=True)
+        psapi = loader("psapi", use_last_error=True)
+        get_current_process = kernel32.GetCurrentProcess
+        get_current_process.restype = wintypes.HANDLE
+        get_process_memory_info = psapi.GetProcessMemoryInfo
+        get_process_memory_info.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(ProcessMemoryCounters),
+            wintypes.DWORD,
+        ]
+        get_process_memory_info.restype = wintypes.BOOL
+
         counters = ProcessMemoryCounters()
         counters.cb = ctypes.sizeof(counters)
-        handle = windll.kernel32.GetCurrentProcess()
-        if not windll.psapi.GetProcessMemoryInfo(
-            handle,
-            ctypes.byref(counters),
-            counters.cb,
-        ):
+        handle = get_current_process()
+        if not get_process_memory_info(handle, ctypes.byref(counters), counters.cb):
             return None
         return int(counters.WorkingSetSize)
 

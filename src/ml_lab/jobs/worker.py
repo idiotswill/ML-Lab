@@ -60,12 +60,7 @@ def task_hash_file(spec: JobSpec, staging: Path) -> dict[str, object]:
 
 
 def task_sparse_nb_train(spec: JobSpec, staging: Path) -> dict[str, object]:
-    train_paths = _path_list(spec.payload.get("train_paths"), field="train_paths")
-    dev_paths = _path_list(
-        spec.payload.get("dev_paths", []),
-        field="dev_paths",
-        allow_empty=True,
-    )
+    train_paths, dev_paths = _training_paths(spec.payload)
     text_key = str(spec.payload.get("text_key", "text"))
     label_key = str(spec.payload.get("label_key", "class"))
     feature_dim = int(spec.payload.get("feature_dim", 32768))
@@ -110,6 +105,7 @@ def task_sparse_nb_train(spec: JobSpec, staging: Path) -> dict[str, object]:
     return {
         "ok": True,
         "trainer_id": "builtin.sparse_nb.v1",
+        "experiment_id": spec.payload.get("experiment_id"),
         "train_examples": train_examples,
         "dev_examples": dev_total,
         "dev_accuracy": dev_accuracy,
@@ -124,6 +120,32 @@ def task_sparse_nb_train(spec: JobSpec, staging: Path) -> dict[str, object]:
             }
         ],
     }
+
+
+def _training_paths(payload: dict[str, object]) -> tuple[list[Path], list[Path]]:
+    staged = payload.get("staged_inputs")
+    if staged is not None:
+        if not isinstance(staged, dict):
+            raise ValueError("staged_inputs must be an object")
+        train_value = staged.get("train.jsonl")
+        dev_value = staged.get("dev.jsonl")
+        if not isinstance(train_value, str):
+            raise ValueError("staged_inputs must contain train.jsonl")
+        train_paths = _path_list([train_value], field="staged train")
+        dev_paths = (
+            _path_list([dev_value], field="staged dev")
+            if isinstance(dev_value, str)
+            else []
+        )
+        return train_paths, dev_paths
+
+    train_paths = _path_list(payload.get("train_paths"), field="train_paths")
+    dev_paths = _path_list(
+        payload.get("dev_paths", []),
+        field="dev_paths",
+        allow_empty=True,
+    )
+    return train_paths, dev_paths
 
 
 def _path_list(

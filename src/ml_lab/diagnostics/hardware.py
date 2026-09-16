@@ -64,11 +64,15 @@ def _total_memory() -> int | None:
         if windll is not None and windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
             return int(status.ullTotalPhys)
         return None
+
+    sysconf = getattr(os, "sysconf", None)
+    if not callable(sysconf):
+        return None
     try:
-        page_size = os.sysconf("SC_PAGE_SIZE")
-        pages = os.sysconf("SC_PHYS_PAGES")
+        page_size = sysconf("SC_PAGE_SIZE")
+        pages = sysconf("SC_PHYS_PAGES")
         return int(page_size * pages)
-    except (AttributeError, ValueError, OSError):
+    except (ValueError, OSError):
         return None
 
 

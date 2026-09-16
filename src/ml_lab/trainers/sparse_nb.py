@@ -6,7 +6,7 @@ import math
 import re
 import unicodedata
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,12 +38,16 @@ class SparseNBModel:
         scores: dict[str, float] = {}
         for label in self.classes:
             documents = self.class_documents[label]
-            prior = math.log((documents + self.alpha) / (total_documents + self.alpha * class_count))
-            denominator = self.class_feature_totals[label] + self.alpha * self.feature_dim
+            prior_denominator = total_documents + self.alpha * class_count
+            prior = math.log((documents + self.alpha) / prior_denominator)
+            denominator = (
+                self.class_feature_totals[label] + self.alpha * self.feature_dim
+            )
             counts = self.feature_counts[label]
             score = prior
             for feature_id, frequency in features.items():
-                likelihood = math.log((counts.get(feature_id, 0) + self.alpha) / denominator)
+                numerator = counts.get(feature_id, 0) + self.alpha
+                likelihood = math.log(numerator / denominator)
                 score += frequency * likelihood
             scores[label] = score
         winner = max(scores, key=scores.__getitem__)
@@ -131,6 +135,8 @@ def train_sparse_nb(
     label_key: str = "class",
     feature_dim: int = 32768,
     alpha: float = 0.5,
+    cancelled: Callable[[], bool] | None = None,
+    on_example: Callable[[int], None] | None = None,
 ) -> tuple[SparseNBModel, int]:
     if feature_dim < 256:
         raise ValueError("feature_dim must be >= 256")
@@ -141,6 +147,8 @@ def train_sparse_nb(
     feature_counts: defaultdict[str, Counter[int]] = defaultdict(Counter)
     examples = 0
     for record in records:
+        if cancelled is not None and cancelled():
+            raise InterruptedError("Cancellation requested")
         payload = record.get("payload")
         label_payload = record.get("label")
         if not isinstance(payload, dict) or not isinstance(label_payload, dict):
@@ -157,6 +165,8 @@ def train_sparse_nb(
         class_totals[label] += sum(features.values())
         feature_counts[label].update(features)
         examples += 1
+        if on_example is not None:
+            on_example(examples)
     if examples == 0:
         raise ValueError("Training data is empty")
     model = SparseNBModel(
@@ -175,10 +185,14 @@ def train_sparse_nb(
 def evaluate_sparse_nb(
     model: SparseNBModel,
     records: Iterable[Mapping[str, object]],
+    *,
+    cancelled: Callable[[], bool] | None = None,
 ) -> tuple[int, int]:
     correct = 0
     total = 0
     for record in records:
+        if cancelled is not None and cancelled():
+            raise InterruptedError("Cancellation requested")
         payload = record.get("payload")
         label_payload = record.get("label")
         if not isinstance(payload, dict) or not isinstance(label_payload, dict):
@@ -201,7 +215,9 @@ def read_jsonl_records(paths: Sequence[Path]) -> Iterable[dict[str, object]]:
                     continue
                 decoded = json.loads(line)
                 if not isinstance(decoded, dict):
-                    raise ValueError(f"{path}:{line_number}: row must be a JSON object")
+                    raise ValueError(
+                        f"{path}:{line_number}: row must be a JSON object"
+                    )
                 yield {str(key): value for key, value in decoded.items()}
 
 

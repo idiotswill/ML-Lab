@@ -2,7 +2,8 @@ import time
 from pathlib import Path
 
 from ml_lab.core.models import JobStatus
-from ml_lab.jobs.manager import JobManager, _worker_command
+from ml_lab.core.process import worker_command
+from ml_lab.jobs.manager import JobManager
 from ml_lab.storage.workspace import Workspace
 
 TERMINAL = {
@@ -79,22 +80,23 @@ def test_reconcile_marks_inflight_jobs_interrupted(tmp_path: Path) -> None:
 
 
 def test_worker_command_uses_python_module_in_dev(monkeypatch, tmp_path: Path) -> None:
-    import ml_lab.jobs.manager as manager_module
+    import ml_lab.core.process as process_module
 
-    monkeypatch.setattr(manager_module.sys, "executable", "python.exe")
-    command = _worker_command(tmp_path / "spec.json")
-    assert command[1:3] == ["-m", "ml_lab.jobs.worker"]
+    monkeypatch.delitem(process_module.__dict__, "__compiled__", raising=False)
+    monkeypatch.setattr(process_module.sys, "executable", "python.exe")
+    command = worker_command(tmp_path / "spec.json")
+    assert command[:3] == ["python.exe", "-m", "ml_lab.jobs.worker"]
 
 
 def test_worker_command_uses_compiled_entrypoint(monkeypatch, tmp_path: Path) -> None:
-    import ml_lab.jobs.manager as manager_module
+    import ml_lab.core.process as process_module
 
-    monkeypatch.setattr(
-        manager_module.sys,
-        "executable",
-        r"C:\Program Files\ML Lab\MLLab.exe",
-    )
-    command = _worker_command(tmp_path / "spec.json")
+    executable = tmp_path / "MLLab.exe"
+    executable.write_bytes(b"test executable marker")
+    monkeypatch.setitem(process_module.__dict__, "__compiled__", object())
+    monkeypatch.setattr(process_module.sys, "argv", [str(executable)])
+    command = worker_command(tmp_path / "spec.json")
+    assert command[0] == str(executable.resolve())
     assert command[1] == "--worker"
 
 

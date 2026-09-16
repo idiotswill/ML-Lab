@@ -71,3 +71,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Compiled QML smoke failed" }
           & $exe.FullName --performance-probe
           if ($LASTEXITCODE -ne 0) { throw "Compiled performance probe failed" }
+      - name: Retain smoke-tested standalone for physical sign-off
+        uses: actions/upload-artifact@v4
+        with:
+          name: MLLab-phase2-windows-standalone-${{ github.sha }}
+          path: deployment/main.dist
+          if-no-files-found: error
+          retention-days: 14

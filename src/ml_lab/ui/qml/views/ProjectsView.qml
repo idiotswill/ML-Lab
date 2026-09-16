@@ -13,6 +13,7 @@ Item {
         width: 500
         title: "New ML project"
         standardButtons: Dialog.NoButton
+        onOpened: projectName.forceActiveFocus()
 
         background: Rectangle {
             color: Theme.surface
@@ -135,29 +136,22 @@ Item {
                     spacing: 7
                     model: appController.projects
 
-                    delegate: Rectangle {
+                    delegate: ItemDelegate {
+                        id: projectDelegate
                         required property var modelData
 
                         width: list.width
                         height: 82
-                        radius: 9
-                        color: appController.selectedProject.id === modelData.id
-                               ? Theme.accentSurface
-                               : (hover.hovered ? Theme.hover : Theme.surfaceAlt)
-                        border.color: appController.selectedProject.id === modelData.id
-                                      ? Theme.accentBorder : Theme.border
+                        leftPadding: 14
+                        rightPadding: 14
+                        topPadding: 10
+                        bottomPadding: 10
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: modelData.name
+                        onClicked: appController.openProject(modelData.id)
 
-                        HoverHandler {
-                            id: hover
-                        }
-
-                        TapHandler {
-                            onTapped: appController.openProject(modelData.id)
-                        }
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 14
+                        contentItem: RowLayout {
                             spacing: 12
 
                             ColumnLayout {
@@ -188,6 +182,17 @@ Item {
                                 text: "NO-GO"
                                 tone: "warn"
                             }
+                        }
+
+                        background: Rectangle {
+                            radius: 9
+                            color: appController.selectedProject.id === modelData.id
+                                   ? Theme.accentSurface
+                                   : (projectDelegate.hovered ? Theme.hover : Theme.surfaceAlt)
+                            border.color: projectDelegate.activeFocus ? Theme.accent
+                                          : (appController.selectedProject.id === modelData.id
+                                             ? Theme.accentBorder : Theme.border)
+                            border.width: projectDelegate.activeFocus ? 2 : 1
                         }
                     }
 

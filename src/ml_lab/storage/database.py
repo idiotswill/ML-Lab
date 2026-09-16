@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 MIGRATIONS: dict[int, tuple[str, ...]] = {
     1: (
@@ -235,6 +235,29 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             created_at TEXT NOT NULL
         )
         """,
+    ),
+    3: (
+        """
+        CREATE TABLE dataset_imports (
+            id TEXT PRIMARY KEY,
+            dataset_id TEXT NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+            source_name TEXT NOT NULL,
+            imported INTEGER NOT NULL CHECK(imported >= 0),
+            rejected INTEGER NOT NULL CHECK(rejected >= 0),
+            error_report_artifact_digest TEXT REFERENCES artifacts(digest),
+            created_at TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_dataset_imports_dataset ON dataset_imports(dataset_id, created_at DESC)",
+        """
+        CREATE TABLE regression_cases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            failure_id TEXT NOT NULL UNIQUE REFERENCES failures(id),
+            suite_name TEXT NOT NULL,
+            promoted_at TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX idx_regression_suite ON regression_cases(suite_name, promoted_at DESC)",
     ),
 }
 

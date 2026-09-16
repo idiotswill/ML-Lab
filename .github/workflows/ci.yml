@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "phase/**"]
+  pull_request:
+
+jobs:
+  core:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt runtime libraries on Linux
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libxkbcommon-x11-0 libxcb-cursor0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - run: uv run ruff check .
+      - run: uv run mypy src/ml_lab
+      - run: uv run pytest
+      - run: uv run python -m ml_lab --smoke-test
+      - run: uv run python -m ml_lab --job-smoke-test
+      - run: uv run python -m ml_lab --restart-recovery-smoke-test
+      - name: QML load smoke
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
+        run: uv run python -m ml_lab --qml-smoke-test
+      - name: Performance instrumentation smoke
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
+        run: uv run python -m ml_lab --performance-probe
+
+  windows-standalone:
+    runs-on: windows-latest
+    needs: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Build standalone executable
+        shell: pwsh
+        run: ./scripts/build_windows.ps1
+      - name: Smoke compiled application and worker boundary
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Recurse -Filter "MLLab.exe" | Select-Object -First 1
+          if (-not $exe) { throw "MLLab.exe was not produced" }
+          Write-Host "Executable: $($exe.FullName) ($($exe.Length) bytes)"
+          & $exe.FullName --smoke-test
+          if ($LASTEXITCODE -ne 0) { throw "Compiled storage smoke failed" }
+          & $exe.FullName --job-smoke-test
+          if ($LASTEXITCODE -ne 0) { throw "Compiled worker smoke failed" }
+          & $exe.FullName --restart-recovery-smoke-test
+          if ($LASTEXITCODE -ne 0) { throw "Compiled restart recovery smoke failed" }
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $env:QSG_RHI_BACKEND = "software"
+          & $exe.FullName --qml-smoke-test
+          if ($LASTEXITCODE -ne 0) { throw "Compiled QML smoke failed" }
+          & $exe.FullName --performance-probe
+          if ($LASTEXITCODE -ne 0) { throw "Compiled performance probe failed" }
+      - name: Retain smoke-tested standalone for physical sign-off
+        uses: actions/upload-artifact@v4
+        with:
+          name: MLLab-phase2-windows-standalone-${{ github.sha }}
+          path: deployment/main.dist
+          if-no-files-found: error
+          retention-days: 14

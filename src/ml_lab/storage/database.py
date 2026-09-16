@@ -70,6 +70,11 @@ class Database:
         self.path = path
 
     def connect(self) -> sqlite3.Connection:
+        """Open a configured connection.
+
+        Callers that need a short-lived connection should prefer ``connection()`` so the
+        handle is always closed on Windows as well as POSIX.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
         conn.row_factory = sqlite3.Row
@@ -78,6 +83,14 @@ class Database:
         conn.execute("PRAGMA synchronous = NORMAL")
         conn.execute("PRAGMA busy_timeout = 5000")
         return conn
+
+    @contextmanager
+    def connection(self) -> Iterator[sqlite3.Connection]:
+        conn = self.connect()
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
@@ -128,7 +141,7 @@ class Database:
         if not self.path.exists() or self.path.stat().st_size == 0:
             return 0
         try:
-            with self.connect() as conn:
+            with self.connection() as conn:
                 row = conn.execute(
                     "SELECT value FROM schema_meta WHERE key='schema_version'"
                 ).fetchone()

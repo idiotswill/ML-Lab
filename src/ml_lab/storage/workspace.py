@@ -94,7 +94,7 @@ class Workspace:
             query += " WHERE state=?"
             params = (ProjectState.ACTIVE.value,)
         query += " ORDER BY updated_at DESC, name COLLATE NOCASE"
-        with self.database.connect() as conn:
+        with self.database.connection() as conn:
             rows = conn.execute(query, params).fetchall()
         return [
             Project(

@@ -124,7 +124,7 @@ class JobManager:
         timer.start()
 
     def list_recent(self, limit: int = 50) -> list[JobRecord]:
-        with self.database.connect() as conn:
+        with self.database.connection() as conn:
             rows = conn.execute(
                 "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?",
                 (max(1, min(limit, 500)),),
@@ -132,7 +132,7 @@ class JobManager:
         return [self._row_to_record(row) for row in rows]
 
     def get(self, job_id: str) -> JobRecord:
-        with self.database.connect() as conn:
+        with self.database.connection() as conn:
             row = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         if row is None:
             raise KeyError(job_id)

@@ -12,18 +12,30 @@ import time
 from contextlib import suppress
 from pathlib import Path
 
+from ml_lab.bundles.verify import write_verification_receipt
 from ml_lab.core.config import user_config_dir
 from ml_lab.core.models import TERMINAL_JOB_STATUSES, JobStatus
 from ml_lab.core.process import application_command
 from ml_lab.diagnostics.logging_setup import configure_logging
 from ml_lab.jobs.manager import JobManager
 from ml_lab.jobs.worker import run_worker
+from ml_lab.storage.database import SCHEMA_VERSION
 from ml_lab.storage.workspace import Workspace
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ML Lab")
     parser.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--verify-bundle-worker",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--verification-receipt",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument(
         "--prepare-interrupted-job",
         type=Path,
@@ -58,6 +70,14 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.worker:
         return run_worker(args.worker)
+    if args.verify_bundle_worker:
+        if args.verification_receipt is None:
+            print("--verification-receipt is required", file=sys.stderr)
+            return 9
+        return write_verification_receipt(
+            args.verify_bundle_worker,
+            args.verification_receipt,
+        )
     if args.prepare_interrupted_job:
         return prepare_interrupted_job(args.prepare_interrupted_job)
     if args.startup_probe_child:
@@ -80,10 +100,18 @@ def smoke_test() -> int:
         workspace = Workspace.create(Path(temp) / "workspace")
         project = workspace.create_project("Smoke project", "generic")
         artifact = workspace.artifacts.commit_bytes(b"ml-lab-smoke")
-        assert workspace.database.schema_version() == 1
+        assert workspace.database.schema_version() == SCHEMA_VERSION
         assert workspace.artifacts.resolve(artifact.digest).read_bytes() == b"ml-lab-smoke"
         assert workspace.list_projects()[0].id == project.id
-        print(json.dumps({"ok": True, "project_id": project.id, "artifact": artifact.digest}))
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "project_id": project.id,
+                    "artifact": artifact.digest,
+                }
+            )
+        )
     return 0
 
 
@@ -100,7 +128,15 @@ def job_smoke_test() -> int:
             time.sleep(0.03)
         manager.shutdown()
         if record.status.value != "COMPLETED" or not record.result_artifact_digest:
-            print(json.dumps({"ok": False, "status": record.status.value, "error": record.error}))
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "status": record.status.value,
+                        "error": record.error,
+                    }
+                )
+            )
             return 3
         print(
             json.dumps(
@@ -161,7 +197,15 @@ def restart_recovery_smoke_test() -> int:
 
         lines = [line for line in fixture.stdout.splitlines() if line.strip()]
         if not lines:
-            print(json.dumps({"ok": False, "stage": "fixture", "error": "no fixture output"}))
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "stage": "fixture",
+                        "error": "no fixture output",
+                    }
+                )
+            )
             return 4
         details = json.loads(lines[-1])
         job_id = str(details["job_id"])
@@ -300,7 +344,15 @@ def qml_smoke_test() -> int:
     ok = bool(engine.rootObjects())
     controller.shutdown()
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-    print(json.dumps({"ok": ok, "qml_load_ms": elapsed_ms, "qml": str(qml_path)}))
+    print(
+        json.dumps(
+            {
+                "ok": ok,
+                "qml_load_ms": elapsed_ms,
+                "qml": str(qml_path),
+            }
+        )
+    )
     del engine
     del app
     return 0 if ok else 2

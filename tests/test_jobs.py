@@ -32,6 +32,18 @@ def test_worker_completes_and_writes_manifest(tmp_path: Path) -> None:
     assert (finished.staging_dir / "result_manifest.json").exists()
 
 
+def test_worker_failure_is_persisted_without_result_artifact(tmp_path: Path) -> None:
+    workspace = Workspace.create(tmp_path / "lab")
+    manager = JobManager(workspace.root, workspace.database, workspace.artifacts)
+    record = manager.start("core.unknown_task")
+    finished = wait_terminal(manager, record.id)
+    assert finished.status is JobStatus.FAILED
+    assert finished.exit_code == 2
+    assert finished.error == "Unknown task type: core.unknown_task"
+    assert finished.result_artifact_digest is None
+    assert finished.event_artifact_digest
+
+
 def test_cancel_worker(tmp_path: Path) -> None:
     workspace = Workspace.create(tmp_path / "lab")
     manager = JobManager(workspace.root, workspace.database)

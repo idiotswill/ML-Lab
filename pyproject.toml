@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "frankenhomie-ml-lab"
+version = "0.1.0.dev0"
+description = "Windows-first local ML workbench for bounded Frankenhomie learning projects"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = {text = "Proprietary"}
+authors = [{name = "Frankenhomie ML Lab"}]
+dependencies = [
+  "PySide6>=6.8,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9",
+  "pytest-cov>=6,<8",
+  "ruff>=0.9,<1",
+  "mypy>=1.14,<2",
+  "nuitka>=2.5,<3",
+]
+
+[project.scripts]
+ml-lab = "ml_lab.app:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ml_lab = ["ui/qml/**/*.qml", "ui/qml/*.qml", "ui/qml/**/qmldir"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["ml_lab"]

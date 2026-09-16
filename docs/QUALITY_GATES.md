@@ -10,7 +10,7 @@ These gates define when ML Lab may advance between build phases. A successful co
 2. Existing experiment/dataset/model artifacts are migrated or remain readable; they are not silently discarded.
 3. A veto metric cannot be hidden by an aggregate average.
 4. Failed/cancelled worker jobs never become completed experiments.
-5. Test/REDTEAM partitions are unavailable to trainer jobs by construction.
+5. TEST/REDTEAM partitions are unavailable to trainer jobs by construction.
 6. Application startup must not import heavyweight optional ML frameworks.
 7. UI operations that can take meaningful time run asynchronously/off the GUI thread.
 8. Every released build records application version, source commit, dependency lock hash, and build manifest.
@@ -19,7 +19,7 @@ These gates define when ML Lab may advance between build phases. A successful co
 
 Phase 2 is complete only if all are true:
 
-- application launches into a polished QML shell on supported Windows x64;
+- application launches into a QML shell on supported Windows x64 in clean CI;
 - first-run workspace creation works without CLI use;
 - project create/open/archive flows are functional;
 - SQLite schema migrations are transactional and covered by upgrade tests;
@@ -29,23 +29,24 @@ Phase 2 is complete only if all are true:
 - runtime-pack/adapter manifests reject incompatible protocol versions;
 - hardware diagnostics show CPU/RAM/disk and gracefully handle no NVIDIA GPU;
 - logs can be opened/exported from the UI;
-- basic keyboard navigation, DPI scaling, dark/light mode, empty/error/loading states exist;
+- keyboard navigation, DPI-aware layout primitives, dark/light mode, and designed empty/error/loading states exist;
 - core Python unit/integration test suite is green;
-- Windows CI creates a development standalone build and launches a smoke test.
+- Windows CI creates a self-contained development standalone build and launches storage/worker/recovery/QML smokes;
+- hosted-Windows startup and working-set probes remain within the engineering hard budgets.
 
-### Phase 2 performance budgets
+### Phase 2 engineering budgets
 
-Measured on a representative modern Windows laptop with SSD, warm OS caches, and no training job running:
+Automated Phase 2 regression budgets:
 
-- process start -> first interactive window: target <= 2.5 s, hard gate <= 4.0 s;
-- idle base app working set: target <= 220 MB, hard gate <= 300 MB;
-- ordinary navigation/input must not block the UI thread for >100 ms;
+- process start -> QML ready: hard gate <= 4.0 s on hosted Windows CI;
+- base app working set at QML readiness: hard gate <= 300 MB on hosted Windows CI;
+- potentially slow UI operations are structurally moved off the GUI thread;
 - Phase 2 project/list surfaces must not eagerly materialize unbounded collections;
-- background jobs must not starve ordinary navigation/input responsiveness.
+- background jobs must not own the GUI process.
 
-The 100k-example paging and virtualized-table budgets begin in Phase 3 when Data Studio introduces those collection surfaces. Moving those checks to the phase where the surfaces exist is an applicability correction, not a waiver.
+Representative-laptop startup/RAM measurements, real Windows scaling checks, and interactive stall checks are **release gates in Phase 4**. The user requested no intermediate manual testing. Deferring those measurements preserves them for the full testing-ready build; it does not waive them.
 
-Targets are engineering budgets, not marketing promises. Regressions require measurement and justification.
+The 100k-example paging and virtualized-table budgets begin in Phase 3 when Data Studio introduces those collection surfaces.
 
 ## Phase 3 exit — Complete lab workflow
 
@@ -128,14 +129,16 @@ A Windows CI/VM smoke pass must:
 - long jobs expose progress, elapsed time, cancellation, and logs;
 - empty/error/loading states are designed, not raw tracebacks;
 - common operations are keyboard accessible;
-- 100%, 125%, 150%, and 200% Windows scale factors are visually checked;
+- 100%, 125%, 150%, and 200% Windows scale factors are visually checked on the full release build;
 - 1366x768 remains usable; larger displays gain density rather than giant controls;
-- dark and light themes are visually checked;
+- dark and light themes are visually checked on the full release build;
 - primary tables preserve selection/filter/sort state sensibly.
 
 ### Performance
 
-- Phase 2 startup/memory/UI-thread gates still pass in the packaged build;
+- on the representative modern Windows laptop: process start -> first interactive window target <= 2.5 s, hard gate <= 4.0 s;
+- on that machine: idle base app working set target <= 220 MB, hard gate <= 300 MB;
+- ordinary navigation/input shows no repeatable >100 ms GUI-thread stall;
 - a 100k-example project opens without loading all example payloads;
 - import/hash/benchmark work cannot freeze the UI;
 - application remains navigable during a CPU-saturating worker job;

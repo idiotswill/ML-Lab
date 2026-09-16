@@ -40,6 +40,12 @@ Item {
                 Layout.fillWidth: true
             }
 
+            BusyIndicator {
+                running: appController.diagnostics.loading === true
+                visible: running
+                Accessible.name: "Refreshing hardware diagnostics"
+            }
+
             LabButton {
                 text: "Open logs"
                 onClicked: appController.openLogsFolder()
@@ -51,9 +57,25 @@ Item {
             }
 
             LabButton {
-                text: "Refresh"
+                text: appController.diagnostics.loading === true ? "Refreshing…" : "Refresh"
                 primary: true
+                enabled: appController.diagnostics.loading !== true
                 onClicked: appController.refreshDiagnostics()
+            }
+        }
+
+        Panel {
+            Layout.fillWidth: true
+            implicitHeight: 72
+            visible: (appController.diagnostics.error || "").length > 0
+
+            Text {
+                anchors.fill: parent
+                anchors.margins: 16
+                text: "Hardware diagnostics failed: " + (appController.diagnostics.error || "")
+                color: Theme.badText
+                wrapMode: Text.WordWrap
+                verticalAlignment: Text.AlignVCenter
             }
         }
 

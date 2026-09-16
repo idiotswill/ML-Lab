@@ -64,7 +64,10 @@ class ModelRegistryService:
         manifest_ref = self.artifacts.commit_bytes(
             (canonical_json(manifest) + "\n").encode("utf-8"),
             media_type="application/vnd.ml-lab.model-manifest+json",
-            metadata={"experiment_id": experiment.id, "project_id": experiment.project_id},
+            metadata={
+                "experiment_id": experiment.id,
+                "project_id": experiment.project_id,
+            },
         )
         model = RegisteredModel(
             id=str(uuid.uuid4()),
@@ -80,8 +83,9 @@ class ModelRegistryService:
         with self.database.transaction() as conn:
             conn.execute(
                 "INSERT INTO models"
-                "(id,project_id,experiment_id,model_artifact_digest,stage,compatibility_json,"
-                "manifest_artifact_digest,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                "(id,project_id,experiment_id,model_artifact_digest,stage,"
+                "compatibility_json,manifest_artifact_digest,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
                 (
                     model.id,
                     model.project_id,
@@ -95,7 +99,8 @@ class ModelRegistryService:
                 ),
             )
             conn.execute(
-                "INSERT INTO model_stage_history(model_id,from_stage,to_stage,evidence_json,created_at) "
+                "INSERT INTO model_stage_history"
+                "(model_id,from_stage,to_stage,evidence_json,created_at) "
                 "VALUES(?,?,?,?,?)",
                 (model.id, None, ModelStage.EXPERIMENT.value, "{}", now),
             )
@@ -103,17 +108,25 @@ class ModelRegistryService:
 
     def get(self, model_id: str) -> RegisteredModel:
         with self.database.connection() as conn:
-            row = conn.execute("SELECT * FROM models WHERE id=?", (model_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM models WHERE id=?", (model_id,)
+            ).fetchone()
         if row is None:
             raise KeyError(f"Unknown model {model_id}")
         return _model_from_row(row)
 
-    def list_for_project(self, project_id: str, *, limit: int = 200) -> list[RegisteredModel]:
+    def list_for_project(
+        self,
+        project_id: str,
+        *,
+        limit: int = 200,
+    ) -> list[RegisteredModel]:
         if not 1 <= limit <= 1000:
             raise ValueError("limit must be between 1 and 1000")
         with self.database.connection() as conn:
             rows = conn.execute(
-                "SELECT * FROM models WHERE project_id=? ORDER BY updated_at DESC,id LIMIT ?",
+                "SELECT * FROM models "
+                "WHERE project_id=? ORDER BY updated_at DESC,id LIMIT ?",
                 (project_id, limit),
             ).fetchall()
         return [_model_from_row(row) for row in rows]
@@ -128,7 +141,8 @@ class ModelRegistryService:
         model = self.get(model_id)
         if to_stage is ModelStage.INTEGRATION_APPROVED:
             raise PermissionError(
-                "INTEGRATION_APPROVED cannot be granted by the ordinary ML Lab promotion API."
+                "INTEGRATION_APPROVED cannot be granted by the ordinary ML Lab "
+                "promotion API."
             )
         expected = _ALLOWED_NEXT.get(model.stage)
         if expected is None or to_stage is not expected:
@@ -149,7 +163,8 @@ class ModelRegistryService:
             if cursor.rowcount != 1:
                 raise RuntimeError("Model stage changed concurrently.")
             conn.execute(
-                "INSERT INTO model_stage_history(model_id,from_stage,to_stage,evidence_json,created_at) "
+                "INSERT INTO model_stage_history"
+                "(model_id,from_stage,to_stage,evidence_json,created_at) "
                 "VALUES(?,?,?,?,?)",
                 (model.id, model.stage.value, to_stage.value, evidence_json, now),
             )
@@ -159,8 +174,8 @@ class ModelRegistryService:
         self.get(model_id)
         with self.database.connection() as conn:
             rows = conn.execute(
-                "SELECT from_stage,to_stage,evidence_json,created_at FROM model_stage_history "
-                "WHERE model_id=? ORDER BY id",
+                "SELECT from_stage,to_stage,evidence_json,created_at "
+                "FROM model_stage_history WHERE model_id=? ORDER BY id",
                 (model_id,),
             ).fetchall()
         return [
@@ -175,14 +190,21 @@ class ModelRegistryService:
 
     def _assert_release_candidate_eligible(self, model: RegisteredModel) -> None:
         metrics = self.experiments.metrics(model.experiment_id)
-        failing_vetoes = [metric for metric in metrics if metric.veto and metric.value != 0.0]
+        failing_vetoes = [
+            metric for metric in metrics if metric.veto and metric.value != 0.0
+        ]
         if failing_vetoes:
             names = ", ".join(metric.metric_id for metric in failing_vetoes)
-            raise RuntimeError(f"Release candidate blocked by non-zero veto metric(s): {names}.")
-        open_vetoes = self.failures.open_veto_count(experiment_id=model.experiment_id)
+            raise RuntimeError(
+                f"Release candidate blocked by non-zero veto metric(s): {names}."
+            )
+        open_vetoes = self.failures.open_veto_count(
+            experiment_id=model.experiment_id
+        )
         if open_vetoes:
             raise RuntimeError(
-                f"Release candidate blocked by {open_vetoes} unresolved veto failure record(s)."
+                f"Release candidate blocked by {open_vetoes} unresolved veto "
+                "failure record(s)."
             )
 
 

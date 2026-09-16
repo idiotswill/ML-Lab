@@ -68,8 +68,8 @@ class JobManager:
         with self.database.transaction() as conn:
             conn.execute(
                 "INSERT INTO jobs("
-                "id,task_type,status,progress,message,staging_dir,correlation_id,created_at,updated_at"
-                ") VALUES(?,?,?,?,?,?,?,?,?)",
+                "id,task_type,status,progress,message,staging_dir,correlation_id,"
+                "created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
                 (
                     job_id,
                     task_type,
@@ -226,6 +226,7 @@ class JobManager:
                         metadata={"job_id": job_id, "kind": "events"},
                     ).digest
                 if code == 0 and manifest_path.exists():
+                    self._finalize_declared_outputs(job_id, staging, manifest_path)
                     result_digest = self.artifacts.commit_file(
                         manifest_path,
                         media_type="application/json",
@@ -263,6 +264,62 @@ class JobManager:
         )
         with self._lock:
             self._processes.pop(job_id, None)
+
+    def _finalize_declared_outputs(
+        self,
+        job_id: str,
+        staging: Path,
+        manifest_path: Path,
+    ) -> None:
+        if self.artifacts is None:
+            return
+        decoded = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(decoded, dict):
+            raise ValueError("Worker result manifest must be a JSON object.")
+        raw_outputs = decoded.pop("outputs", [])
+        if not isinstance(raw_outputs, list):
+            raise ValueError("Worker result outputs must be a list.")
+        output_artifacts: dict[str, dict[str, object]] = {}
+        staging_root = staging.resolve()
+        for raw_output in raw_outputs:
+            if not isinstance(raw_output, dict):
+                raise ValueError("Worker output entry must be a JSON object.")
+            name = str(raw_output.get("name", "")).strip()
+            relative = str(raw_output.get("path", "")).strip()
+            media_type = str(
+                raw_output.get("media_type", "application/octet-stream")
+            ).strip()
+            if not name or not relative or not media_type:
+                raise ValueError("Worker output requires name, path, and media_type.")
+            if name in output_artifacts:
+                raise ValueError(f"Duplicate worker output name {name!r}.")
+            relative_path = Path(relative)
+            if relative_path.is_absolute() or ".." in relative_path.parts:
+                raise ValueError(f"Unsafe worker output path {relative!r}.")
+            output_path = (staging / relative_path).resolve()
+            if not output_path.is_relative_to(staging_root):
+                raise ValueError(f"Worker output escaped staging: {relative!r}.")
+            if not output_path.is_file():
+                raise FileNotFoundError(f"Worker output file is missing: {relative!r}.")
+            ref = self.artifacts.commit_file(
+                output_path,
+                media_type=media_type,
+                metadata={
+                    "job_id": job_id,
+                    "kind": "worker-output",
+                    "output_name": name,
+                },
+            )
+            output_artifacts[name] = {
+                "sha256": ref.digest,
+                "size_bytes": ref.size_bytes,
+                "media_type": ref.media_type,
+            }
+        decoded["output_artifacts"] = output_artifacts
+        manifest_path.write_text(
+            json.dumps(decoded, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
 
     def _update(self, job_id: str, **changes: object) -> None:
         allowed = {

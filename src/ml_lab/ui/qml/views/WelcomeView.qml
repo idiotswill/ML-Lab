@@ -70,8 +70,10 @@ Item {
                     spacing: 10
 
                     LabButton {
+                        id: createWorkspaceButton
                         text: "Create workspace"
                         primary: true
+                        focus: true
                         onClicked: createFolder.open()
                     }
 
@@ -83,4 +85,6 @@ Item {
             }
         }
     }
+
+    Component.onCompleted: createWorkspaceButton.forceActiveFocus()
 }

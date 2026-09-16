@@ -29,8 +29,7 @@ class JobManager:
         now = utc_now_iso()
         with self.database.transaction() as conn:
             cursor = conn.execute(
-                "UPDATE jobs SET status=?, updated_at=?, message=? "
-                "WHERE status IN (?, ?, ?)",
+                "UPDATE jobs SET status=?, updated_at=?, message=? WHERE status IN (?, ?, ?)",
                 (
                     JobStatus.INTERRUPTED.value,
                     now,
@@ -53,8 +52,7 @@ class JobManager:
         now = utc_now_iso()
         with self.database.transaction() as conn:
             conn.execute(
-                "INSERT INTO jobs(id,task_type,status,progress,message,staging_dir,correlation_id,created_at,updated_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO jobs(id,task_type,status,progress,message,staging_dir,correlation_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
                 (
                     job_id,
                     task_type,
@@ -69,9 +67,7 @@ class JobManager:
             )
 
         command = _worker_command(spec_path)
-        flags = 0
-        if os.name == "nt":
-            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
@@ -85,7 +81,10 @@ class JobManager:
             self._processes[job_id] = process
         self._update(job_id, status=JobStatus.RUNNING, pid=process.pid, message="Running")
         thread = threading.Thread(
-            target=self._monitor, args=(job_id, process, staging), daemon=True, name=f"job-{job_id[:8]}"
+            target=self._monitor,
+            args=(job_id, process, staging),
+            daemon=True,
+            name=f"job-{job_id[:8]}",
         )
         thread.start()
         return self.get(job_id)
@@ -103,7 +102,8 @@ class JobManager:
     def list_recent(self, limit: int = 50) -> list[JobRecord]:
         with self.database.connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (max(1, min(limit, 500)),)
+                "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?",
+                (max(1, min(limit, 500)),),
             ).fetchall()
         return [self._row_to_record(row) for row in rows]
 
@@ -157,11 +157,16 @@ class JobManager:
                         message=str(payload.get("message", "Running")),
                     )
                 elif kind == "completed":
-                    self._update(job_id, progress=1.0, message=str(payload.get("message", "Completed")))
+                    self._update(
+                        job_id,
+                        progress=1.0,
+                        message=str(payload.get("message", "Completed")),
+                    )
                 elif kind == "failed":
                     self._update(job_id, error=str(payload.get("error", "Worker failed")))
                 elif kind == "cancelled":
                     self._update(job_id, message=str(payload.get("message", "Cancelled")))
+
         stderr = process.stderr.read() if process.stderr is not None else ""
         if stderr:
             stderr_log.write_text(stderr, encoding="utf-8")
@@ -170,11 +175,28 @@ class JobManager:
         result_digest = None
         event_digest = None
         manifest_path = staging / "result_manifest.json"
-        if self.artifacts is not None and event_log.exists():
-            event_digest = self.artifacts.commit_file(event_log, media_type="application/x-ndjson", metadata={"job_id": job_id, "kind": "events"}).digest
-        if code == 0 and manifest_path.exists():
-            if self.artifacts is not None:
-                result_digest = self.artifacts.commit_file(manifest_path, media_type="application/json", metadata={"job_id": job_id, "kind": "result"}).digest
+        artifact_error: str | None = None
+        if self.artifacts is not None:
+            try:
+                if event_log.exists():
+                    event_digest = self.artifacts.commit_file(
+                        event_log,
+                        media_type="application/x-ndjson",
+                        metadata={"job_id": job_id, "kind": "events"},
+                    ).digest
+                if code == 0 and manifest_path.exists():
+                    result_digest = self.artifacts.commit_file(
+                        manifest_path,
+                        media_type="application/json",
+                        metadata={"job_id": job_id, "kind": "result"},
+                    ).digest
+            except Exception as exc:
+                artifact_error = f"Artifact finalization failed: {type(exc).__name__}: {exc}"
+
+        if artifact_error is not None:
+            final = JobStatus.FAILED
+            error = artifact_error
+        elif code == 0 and manifest_path.exists():
             final = JobStatus.COMPLETED
             error = current.error
         elif code == 130 or current.status == JobStatus.CANCELLING:
@@ -183,6 +205,7 @@ class JobManager:
         else:
             final = JobStatus.FAILED
             error = current.error or (stderr.strip() if stderr else f"Worker exited with code {code}")
+
         self._update(
             job_id,
             status=final,
@@ -195,7 +218,16 @@ class JobManager:
             self._processes.pop(job_id, None)
 
     def _update(self, job_id: str, **changes: object) -> None:
-        allowed = {"status", "progress", "message", "pid", "exit_code", "error", "result_artifact_digest", "event_artifact_digest"}
+        allowed = {
+            "status",
+            "progress",
+            "message",
+            "pid",
+            "exit_code",
+            "error",
+            "result_artifact_digest",
+            "event_artifact_digest",
+        }
         unknown = set(changes) - allowed
         if unknown:
             raise ValueError(f"Unknown job fields: {unknown}")

@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ml_lab.core.config import user_config_dir
 from ml_lab.core.models import TERMINAL_JOB_STATUSES, JobStatus
+from ml_lab.core.process import application_command
 from ml_lab.diagnostics.logging_setup import configure_logging
 from ml_lab.jobs.manager import JobManager
 from ml_lab.jobs.worker import run_worker
@@ -137,7 +138,7 @@ def restart_recovery_smoke_test() -> int:
     with tempfile.TemporaryDirectory(prefix="ml-lab-recovery-smoke-") as temp:
         root = Path(temp) / "workspace"
         fixture = subprocess.run(
-            _application_command("--prepare-interrupted-job", str(root)),
+            application_command("--prepare-interrupted-job", str(root)),
             check=False,
             capture_output=True,
             text=True,
@@ -230,7 +231,7 @@ def performance_probe() -> int:
     """Measure process launch through QML readiness using this same build."""
     started = time.perf_counter()
     child = subprocess.run(
-        _application_command("--startup-probe-child"),
+        application_command("--startup-probe-child"),
         check=False,
         capture_output=True,
         text=True,
@@ -330,14 +331,6 @@ def run_gui() -> int:
     if not engine.rootObjects():
         return 2
     return app.exec()
-
-
-def _application_command(*args: str) -> list[str]:
-    executable = Path(sys.executable).name.casefold()
-    python_names = {"python", "python3", "python.exe", "pythonw.exe", "pypy", "pypy3"}
-    if executable not in python_names:
-        return [sys.executable, *args]
-    return [sys.executable, "-m", "ml_lab", *args]
 
 
 def _terminate_process(pid: int) -> None:

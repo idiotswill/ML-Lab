@@ -99,9 +99,11 @@ class EvaluationService:
                 row = _decode_case(raw_line, path.name, line_number)
                 row_split = row.get("split")
                 if row_split != split.value:
-                    raise ValueError(
-                        f"{path.name}:{line_number}: expected split {split.value}, got {row_split!r}"
+                    message = (
+                        f"{path.name}:{line_number}: expected split {split.value}, "
+                        f"got {row_split!r}"
                     )
+                    raise ValueError(message)
                 example_id = row.get("example_id")
                 expected = row.get("label")
                 if not isinstance(example_id, str) or not example_id:

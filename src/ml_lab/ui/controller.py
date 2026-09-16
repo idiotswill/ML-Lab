@@ -6,14 +6,47 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Property, QObject, Qt, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import (
+    Property,
+    QObject,
+    QRunnable,
+    Qt,
+    QThreadPool,
+    QTimer,
+    QUrl,
+    Signal,
+    Slot,
+)
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 
 from ml_lab.core.config import AppConfig, user_config_dir
+from ml_lab.diagnostics.hardware import HardwareInfo, collect_hardware_info
 from ml_lab.extensions.catalog import ExtensionCatalog
 from ml_lab.services import LabServices, open_or_create_workspace
 
 LOGGER = logging.getLogger(__name__)
+
+
+class _HardwareProbeSignals(QObject):
+    finished = Signal(str, object)
+    failed = Signal(str, str)
+
+
+class _HardwareProbe(QRunnable):
+    def __init__(self, workspace_root: Path) -> None:
+        super().__init__()
+        self.workspace_root = workspace_root
+        self.signals = _HardwareProbeSignals()
+
+    @Slot()
+    def run(self) -> None:
+        workspace_key = str(self.workspace_root)
+        try:
+            hardware = collect_hardware_info(self.workspace_root)
+        except Exception as exc:
+            self.signals.failed.emit(workspace_key, f"{type(exc).__name__}: {exc}")
+            return
+        self.signals.finished.emit(workspace_key, hardware)
 
 
 class AppController(QObject):
@@ -35,6 +68,9 @@ class AppController(QObject):
         self._catalog: ExtensionCatalog | None = None
         self._diagnostics: dict[str, object] = {}
         self._selected_project_id = ""
+        self._diagnostic_pool = QThreadPool(self)
+        self._diagnostic_pool.setMaxThreadCount(1)
+        self._diagnostics_loading = False
         self._poller = QTimer(self)
         self._poller.setInterval(400)
         self._poller.timeout.connect(self._poll_jobs)
@@ -245,6 +281,8 @@ class AppController(QObject):
             self.errorRaised.emit("Export error", str(exc))
 
     def shutdown(self) -> None:
+        self._diagnostic_pool.clear()
+        self._diagnostic_pool.waitForDone(2500)
         if self._services:
             self._services.close()
 
@@ -261,29 +299,62 @@ class AppController(QObject):
     def _refresh_diagnostics(self) -> None:
         if not self._services:
             self._diagnostics = {}
-        else:
-            hardware = self._services.diagnostics()
-            catalog: dict[str, Any] = (
-                self._catalog.summary()
-                if self._catalog
-                else {"adapters": 0, "runtimes": 0, "errors": []}
-            )
-            self._diagnostics = {
-                "os": f"{hardware.os} {hardware.architecture}",
-                "cpu": hardware.cpu,
-                "logicalCpus": hardware.logical_cpus,
-                "ram": _human_bytes(hardware.ram_bytes),
-                "diskFree": _human_bytes(hardware.disk_free_bytes),
-                "gpu": hardware.nvidia_gpu or "No NVIDIA GPU detected",
-                "vram": (
-                    f"{hardware.nvidia_vram_mb / 1024:.1f} GB"
-                    if hardware.nvidia_vram_mb is not None
-                    else "—"
-                ),
-                "adapterCount": catalog["adapters"],
-                "runtimeCount": catalog["runtimes"],
-                "extensionErrors": len(catalog["errors"]),
-            }
+            self._diagnostics_loading = False
+            self.diagnosticsChanged.emit()
+            return
+        if self._diagnostics_loading:
+            return
+
+        self._diagnostics_loading = True
+        self._diagnostics = {**self._diagnostics, "loading": True, "error": ""}
+        self.diagnosticsChanged.emit()
+        probe = _HardwareProbe(self._services.workspace.root)
+        probe.signals.finished.connect(self._apply_hardware)
+        probe.signals.failed.connect(self._diagnostics_failed)
+        self._diagnostic_pool.start(probe)
+
+    @Slot(str, object)
+    def _apply_hardware(self, workspace_key: str, result: object) -> None:
+        if not self._services or str(self._services.workspace.root) != workspace_key:
+            return
+        self._diagnostics_loading = False
+        if not isinstance(result, HardwareInfo):
+            self._diagnostics = {"loading": False, "error": "Invalid diagnostics result"}
+            self.diagnosticsChanged.emit()
+            return
+
+        catalog: dict[str, Any] = (
+            self._catalog.summary()
+            if self._catalog
+            else {"adapters": 0, "runtimes": 0, "errors": []}
+        )
+        self._diagnostics = {
+            "loading": False,
+            "error": "",
+            "os": f"{result.os} {result.architecture}",
+            "cpu": result.cpu,
+            "logicalCpus": result.logical_cpus,
+            "ram": _human_bytes(result.ram_bytes),
+            "diskFree": _human_bytes(result.disk_free_bytes),
+            "gpu": result.nvidia_gpu or "No NVIDIA GPU detected",
+            "vram": (
+                f"{result.nvidia_vram_mb / 1024:.1f} GB"
+                if result.nvidia_vram_mb is not None
+                else "—"
+            ),
+            "adapterCount": catalog["adapters"],
+            "runtimeCount": catalog["runtimes"],
+            "extensionErrors": len(catalog["errors"]),
+        }
+        self.diagnosticsChanged.emit()
+
+    @Slot(str, str)
+    def _diagnostics_failed(self, workspace_key: str, error: str) -> None:
+        if not self._services or str(self._services.workspace.root) != workspace_key:
+            return
+        self._diagnostics_loading = False
+        LOGGER.warning("Hardware diagnostics failed: %s", error)
+        self._diagnostics = {**self._diagnostics, "loading": False, "error": error}
         self.diagnosticsChanged.emit()
 
     def _poll_jobs(self) -> None:

@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 MIGRATIONS: dict[int, tuple[str, ...]] = {
     1: (
@@ -322,6 +322,31 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
         """
         CREATE INDEX idx_regression_suite
         ON regression_cases(suite_name, promoted_at DESC)
+        """,
+    ),
+    4: (
+        """
+        CREATE TABLE evaluation_cases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            experiment_id TEXT NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+            example_id TEXT NOT NULL,
+            split TEXT NOT NULL CHECK(split IN ('TRAIN', 'DEV', 'TEST', 'REDTEAM')),
+            expected_json TEXT NOT NULL,
+            observed_json TEXT NOT NULL,
+            correct INTEGER NOT NULL CHECK(correct IN (0, 1)),
+            latency_ms REAL NOT NULL DEFAULT 0 CHECK(latency_ms >= 0),
+            failure_id TEXT REFERENCES failures(id),
+            created_at TEXT NOT NULL,
+            UNIQUE(experiment_id, split, example_id)
+        )
+        """,
+        """
+        CREATE INDEX idx_eval_cases_experiment_split
+        ON evaluation_cases(experiment_id, split, correct, example_id)
+        """,
+        """
+        CREATE INDEX idx_eval_cases_failure
+        ON evaluation_cases(failure_id)
         """,
     ),
 }

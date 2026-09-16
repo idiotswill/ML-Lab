@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import suppress
 from pathlib import Path
 
 from ml_lab.core.config import user_config_dir
@@ -350,10 +351,8 @@ def _terminate_process(pid: int) -> None:
             text=True,
         )
         return
-    try:
+    with suppress(ProcessLookupError):
         os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
 
 
 def _working_set_bytes() -> int | None:

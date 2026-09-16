@@ -204,7 +204,9 @@ class ContractSnapshotService:
 
     def _require_project_adapter(self, project_id: str, adapter_id: str) -> None:
         with self.database.connection() as conn:
-            row = conn.execute("SELECT adapter_id FROM projects WHERE id=?", (project_id,)).fetchone()
+            row = conn.execute(
+                "SELECT adapter_id FROM projects WHERE id=?", (project_id,)
+            ).fetchone()
         if row is None:
             raise KeyError(f"Unknown project {project_id}")
         configured = str(row["adapter_id"])
@@ -240,8 +242,7 @@ class ContractSnapshotService:
         completed = subprocess.run(
             ["git", "-C", str(root), *args],
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             timeout=30,
         )
         return completed.stdout

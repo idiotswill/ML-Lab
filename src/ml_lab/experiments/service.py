@@ -57,7 +57,9 @@ class ExperimentService:
             if contract_snapshot_id is None:
                 contract_snapshot_id = dataset.contract_snapshot_id
             elif contract_snapshot_id != dataset.contract_snapshot_id:
-                raise ValueError("Experiment contract does not match the frozen dataset contract.")
+                raise ValueError(
+                    "Experiment contract does not match the frozen dataset contract."
+                )
         clean_trainer = trainer_id.strip()
         clean_runtime = runtime_pack_id.strip()
         if not clean_trainer or not clean_runtime:
@@ -79,8 +81,9 @@ class ExperimentService:
         with self.database.transaction() as conn:
             conn.execute(
                 "INSERT INTO experiments"
-                "(id,project_id,dataset_id,contract_snapshot_id,trainer_id,runtime_pack_id,status,"
-                "config_json,seed,environment_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                "(id,project_id,dataset_id,contract_snapshot_id,trainer_id,"
+                "runtime_pack_id,status,config_json,seed,environment_json,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     record.id,
                     record.project_id,
@@ -99,24 +102,40 @@ class ExperimentService:
 
     def get(self, experiment_id: str) -> ExperimentRecord:
         with self.database.connection() as conn:
-            row = conn.execute("SELECT * FROM experiments WHERE id=?", (experiment_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM experiments WHERE id=?", (experiment_id,)
+            ).fetchone()
         if row is None:
             raise KeyError(f"Unknown experiment {experiment_id}")
         return _record_from_row(row)
 
-    def list_for_project(self, project_id: str, *, limit: int = 200) -> list[ExperimentRecord]:
+    def list_for_project(
+        self,
+        project_id: str,
+        *,
+        limit: int = 200,
+    ) -> list[ExperimentRecord]:
         if not 1 <= limit <= 1000:
             raise ValueError("limit must be between 1 and 1000")
         with self.database.connection() as conn:
             rows = conn.execute(
-                "SELECT * FROM experiments WHERE project_id=? ORDER BY created_at DESC LIMIT ?",
+                "SELECT * FROM experiments "
+                "WHERE project_id=? ORDER BY created_at DESC LIMIT ?",
                 (project_id, limit),
             ).fetchall()
         return [_record_from_row(row) for row in rows]
 
-    def trainer_job_spec(self, experiment_id: str, *, include_dev: bool = True) -> dict[str, object]:
+    def trainer_job_spec(
+        self,
+        experiment_id: str,
+        *,
+        include_dev: bool = True,
+    ) -> dict[str, object]:
         record = self.get(experiment_id)
-        handles = self.datasets.trainer_partition_handles(record.dataset_id, include_dev=include_dev)
+        handles = self.datasets.trainer_partition_handles(
+            record.dataset_id,
+            include_dev=include_dev,
+        )
         if "TEST" in handles or "REDTEAM" in handles:
             raise AssertionError("Protected evaluation partition escaped into trainer spec.")
         dataset = self.datasets.get(record.dataset_id)
@@ -145,15 +164,19 @@ class ExperimentService:
             "seed": record.seed,
             "contract_snapshot_id": record.contract_snapshot_id,
             "dataset_manifest_sha256": dataset.manifest_artifact_digest,
-            "input_partitions": self.datasets.evaluation_partition_handles(record.dataset_id),
+            "input_partitions": self.datasets.evaluation_partition_handles(
+                record.dataset_id
+            ),
             "model_artifact_sha256": record.model_artifact_digest,
         }
 
     def start(self, experiment_id: str) -> ExperimentRecord:
         now = utc_now_iso()
+        changed = False
         with self.database.transaction() as conn:
             cursor = conn.execute(
-                "UPDATE experiments SET status=?,started_at=? WHERE id=? AND status=?",
+                "UPDATE experiments SET status=?,started_at=? "
+                "WHERE id=? AND status=?",
                 (
                     ExperimentStatus.RUNNING.value,
                     now,
@@ -161,9 +184,12 @@ class ExperimentService:
                     ExperimentStatus.QUEUED.value,
                 ),
             )
-            if cursor.rowcount != 1:
-                existing = self.get(experiment_id)
-                raise RuntimeError(f"Cannot start experiment from {existing.status.value} state.")
+            changed = cursor.rowcount == 1
+        if not changed:
+            existing = self.get(experiment_id)
+            raise RuntimeError(
+                f"Cannot start experiment from {existing.status.value} state."
+            )
         return self.get(experiment_id)
 
     def complete(
@@ -175,7 +201,9 @@ class ExperimentService:
     ) -> ExperimentRecord:
         record = self.get(experiment_id)
         if record.status is not ExperimentStatus.RUNNING:
-            raise RuntimeError(f"Cannot complete experiment from {record.status.value} state.")
+            raise RuntimeError(
+                f"Cannot complete experiment from {record.status.value} state."
+            )
         _validate_metrics(metrics)
         if model_artifact_digest is not None:
             self.artifacts.resolve(model_artifact_digest)
@@ -227,8 +255,8 @@ class ExperimentService:
         with self.database.transaction() as conn:
             for metric in metrics:
                 conn.execute(
-                    "INSERT INTO experiment_metrics(experiment_id,metric_id,value,direction,veto) "
-                    "VALUES(?,?,?,?,?)",
+                    "INSERT INTO experiment_metrics"
+                    "(experiment_id,metric_id,value,direction,veto) VALUES(?,?,?,?,?)",
                     (
                         record.id,
                         metric.metric_id,
@@ -238,8 +266,9 @@ class ExperimentService:
                     ),
                 )
             cursor = conn.execute(
-                "UPDATE experiments SET status=?,model_artifact_digest=?,metrics_artifact_digest=?,"
-                "manifest_artifact_digest=?,completed_at=? WHERE id=? AND status=?",
+                "UPDATE experiments SET status=?,model_artifact_digest=?,"
+                "metrics_artifact_digest=?,manifest_artifact_digest=?,completed_at=? "
+                "WHERE id=? AND status=?",
                 (
                     ExperimentStatus.COMPLETED.value,
                     model_artifact_digest,
@@ -271,7 +300,8 @@ class ExperimentService:
         completed_at = utc_now_iso()
         with self.database.transaction() as conn:
             cursor = conn.execute(
-                "UPDATE experiments SET status=?,completed_at=? WHERE id=? AND status IN (?,?)",
+                "UPDATE experiments SET status=?,completed_at=? "
+                "WHERE id=? AND status IN (?,?)",
                 (
                     status.value,
                     completed_at,

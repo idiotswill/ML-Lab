@@ -3,13 +3,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
+import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
 
 from ml_lab.core.config import user_config_dir
-from ml_lab.core.models import TERMINAL_JOB_STATUSES
+from ml_lab.core.models import TERMINAL_JOB_STATUSES, JobStatus
 from ml_lab.diagnostics.logging_setup import configure_logging
 from ml_lab.jobs.manager import JobManager
 from ml_lab.jobs.worker import run_worker
@@ -20,11 +22,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ML Lab")
     parser.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
     parser.add_argument(
+        "--prepare-interrupted-job",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--smoke-test",
         action="store_true",
         help="Run a non-GUI installation smoke test.",
     )
     parser.add_argument("--job-smoke-test", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--restart-recovery-smoke-test",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--qml-smoke-test", action="store_true", help=argparse.SUPPRESS)
     return parser
 
@@ -33,10 +45,14 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.worker:
         return run_worker(args.worker)
+    if args.prepare_interrupted_job:
+        return prepare_interrupted_job(args.prepare_interrupted_job)
     if args.smoke_test:
         return smoke_test()
     if args.job_smoke_test:
         return job_smoke_test()
+    if args.restart_recovery_smoke_test:
+        return restart_recovery_smoke_test()
     if args.qml_smoke_test:
         return qml_smoke_test()
     return run_gui()
@@ -79,6 +95,86 @@ def job_smoke_test() -> int:
             )
         )
     return 0
+
+
+def prepare_interrupted_job(workspace_path: Path) -> int:
+    """Start a real worker, publish its PID, then simulate an abrupt app death."""
+    workspace = Workspace.create(workspace_path)
+    manager = JobManager(workspace.root, workspace.database, workspace.artifacts)
+    record = manager.start("core.self_test", {"steps": 600, "delay": 0.1})
+    print(
+        json.dumps(
+            {
+                "job_id": record.id,
+                "pid": record.pid,
+                "status": record.status.value,
+            }
+        ),
+        flush=True,
+    )
+    # Deliberately bypass normal manager/application shutdown. This fixture exists
+    # to prove startup reconciliation after a hard host-process interruption.
+    os._exit(0)
+
+
+def restart_recovery_smoke_test() -> int:
+    with tempfile.TemporaryDirectory(prefix="ml-lab-recovery-smoke-") as temp:
+        root = Path(temp) / "workspace"
+        fixture = subprocess.run(
+            _application_command("--prepare-interrupted-job", str(root)),
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+        )
+        if fixture.returncode != 0:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "stage": "fixture",
+                        "returncode": fixture.returncode,
+                        "stderr": fixture.stderr[-1000:],
+                    }
+                )
+            )
+            return 4
+
+        lines = [line for line in fixture.stdout.splitlines() if line.strip()]
+        if not lines:
+            print(json.dumps({"ok": False, "stage": "fixture", "error": "no fixture output"}))
+            return 4
+        details = json.loads(lines[-1])
+        job_id = str(details["job_id"])
+        worker_pid = int(details["pid"])
+
+        workspace = Workspace.open(root)
+        manager = JobManager(workspace.root, workspace.database, workspace.artifacts)
+        before = manager.get(job_id)
+        _terminate_process(worker_pid)
+        recovered = manager.reconcile_startup()
+        after = manager.get(job_id)
+        manager.shutdown()
+
+        ok = (
+            before.status is JobStatus.RUNNING
+            and recovered == 1
+            and after.status is JobStatus.INTERRUPTED
+            and after.result_artifact_digest is None
+        )
+        print(
+            json.dumps(
+                {
+                    "ok": ok,
+                    "before": before.status.value,
+                    "after": after.status.value,
+                    "reconciled": recovered,
+                }
+            )
+        )
+        return 0 if ok else 5
 
 
 def qml_smoke_test() -> int:
@@ -132,3 +228,28 @@ def run_gui() -> int:
     if not engine.rootObjects():
         return 2
     return app.exec()
+
+
+def _application_command(*args: str) -> list[str]:
+    executable = Path(sys.executable).name.casefold()
+    python_names = {"python", "python3", "python.exe", "pythonw.exe", "pypy", "pypy3"}
+    if executable not in python_names:
+        return [sys.executable, *args]
+    return [sys.executable, "-m", "ml_lab", *args]
+
+
+def _terminate_process(pid: int) -> None:
+    if pid <= 0:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        return
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass

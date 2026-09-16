@@ -20,7 +20,10 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             updated_at TEXT NOT NULL
         )
         """,
-        "CREATE INDEX IF NOT EXISTS idx_projects_state_updated ON projects(state, updated_at DESC)",
+        """
+        CREATE INDEX IF NOT EXISTS idx_projects_state_updated
+        ON projects(state, updated_at DESC)
+        """,
         """
         CREATE TABLE IF NOT EXISTS artifacts (
             digest TEXT PRIMARY KEY,
@@ -49,7 +52,10 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             updated_at TEXT NOT NULL
         )
         """,
-        "CREATE INDEX IF NOT EXISTS idx_jobs_status_updated ON jobs(status, updated_at DESC)",
+        """
+        CREATE INDEX IF NOT EXISTS idx_jobs_status_updated
+        ON jobs(status, updated_at DESC)
+        """,
         """
         CREATE TABLE IF NOT EXISTS extensions (
             kind TEXT NOT NULL,
@@ -78,8 +84,14 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             created_at TEXT NOT NULL
         )
         """,
-        "CREATE INDEX idx_contract_project_created ON contract_snapshots(project_id, created_at DESC)",
-        "CREATE UNIQUE INDEX idx_contract_signature ON contract_snapshots(project_id, compatibility_signature)",
+        """
+        CREATE INDEX idx_contract_project_created
+        ON contract_snapshots(project_id, created_at DESC)
+        """,
+        """
+        CREATE UNIQUE INDEX idx_contract_signature
+        ON contract_snapshots(project_id, compatibility_signature)
+        """,
         """
         CREATE TABLE dataset_versions (
             id TEXT PRIMARY KEY,
@@ -94,7 +106,10 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             frozen_at TEXT
         )
         """,
-        "CREATE INDEX idx_dataset_project_created ON dataset_versions(project_id, created_at DESC)",
+        """
+        CREATE INDEX idx_dataset_project_created
+        ON dataset_versions(project_id, created_at DESC)
+        """,
         """
         CREATE TABLE dataset_examples (
             dataset_id TEXT NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
@@ -112,10 +127,22 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             PRIMARY KEY(dataset_id, example_id)
         )
         """,
-        "CREATE INDEX idx_examples_dataset_split ON dataset_examples(dataset_id, split, example_id)",
-        "CREATE INDEX idx_examples_dataset_lineage ON dataset_examples(dataset_id, lineage_group)",
-        "CREATE INDEX idx_examples_dataset_fingerprint ON dataset_examples(dataset_id, fingerprint)",
-        "CREATE INDEX idx_examples_dataset_normfingerprint ON dataset_examples(dataset_id, normalized_fingerprint)",
+        """
+        CREATE INDEX idx_examples_dataset_split
+        ON dataset_examples(dataset_id, split, example_id)
+        """,
+        """
+        CREATE INDEX idx_examples_dataset_lineage
+        ON dataset_examples(dataset_id, lineage_group)
+        """,
+        """
+        CREATE INDEX idx_examples_dataset_fingerprint
+        ON dataset_examples(dataset_id, fingerprint)
+        """,
+        """
+        CREATE INDEX idx_examples_dataset_normfingerprint
+        ON dataset_examples(dataset_id, normalized_fingerprint)
+        """,
         """
         CREATE TABLE dataset_partitions (
             dataset_id TEXT NOT NULL REFERENCES dataset_versions(id) ON DELETE RESTRICT,
@@ -135,7 +162,11 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             contract_snapshot_id TEXT REFERENCES contract_snapshots(id),
             trainer_id TEXT NOT NULL,
             runtime_pack_id TEXT NOT NULL,
-            status TEXT NOT NULL CHECK(status IN ('QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'INTERRUPTED')),
+            status TEXT NOT NULL CHECK(
+                status IN (
+                    'QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'INTERRUPTED'
+                )
+            ),
             config_json TEXT NOT NULL,
             seed INTEGER NOT NULL,
             environment_json TEXT NOT NULL DEFAULT '{}',
@@ -147,8 +178,14 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             completed_at TEXT
         )
         """,
-        "CREATE INDEX idx_experiment_project_created ON experiments(project_id, created_at DESC)",
-        "CREATE INDEX idx_experiment_dataset ON experiments(dataset_id, created_at DESC)",
+        """
+        CREATE INDEX idx_experiment_project_created
+        ON experiments(project_id, created_at DESC)
+        """,
+        """
+        CREATE INDEX idx_experiment_dataset
+        ON experiments(dataset_id, created_at DESC)
+        """,
         """
         CREATE TABLE experiment_metrics (
             experiment_id TEXT NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
@@ -167,7 +204,11 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             experiment_id TEXT REFERENCES experiments(id),
             seed INTEGER NOT NULL,
             mutator_version TEXT NOT NULL,
-            status TEXT NOT NULL CHECK(status IN ('QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'INTERRUPTED')),
+            status TEXT NOT NULL CHECK(
+                status IN (
+                    'QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'INTERRUPTED'
+                )
+            ),
             manifest_artifact_digest TEXT REFERENCES artifacts(digest),
             created_at TEXT NOT NULL,
             completed_at TEXT
@@ -181,32 +222,50 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             dataset_id TEXT REFERENCES dataset_versions(id),
             redteam_run_id TEXT REFERENCES redteam_runs(id),
             example_id TEXT,
-            split TEXT CHECK(split IS NULL OR split IN ('TRAIN', 'DEV', 'TEST', 'REDTEAM')),
+            split TEXT CHECK(
+                split IS NULL OR split IN ('TRAIN', 'DEV', 'TEST', 'REDTEAM')
+            ),
             kind TEXT NOT NULL,
             severity TEXT NOT NULL CHECK(severity IN ('VETO', 'NON_VETO')),
-            status TEXT NOT NULL CHECK(status IN ('OPEN', 'REGRESSION', 'FIXED', 'ACCEPTED')),
+            status TEXT NOT NULL CHECK(
+                status IN ('OPEN', 'REGRESSION', 'FIXED', 'ACCEPTED')
+            ),
             expected_json TEXT NOT NULL,
             observed_json TEXT NOT NULL,
             evidence_artifact_digest TEXT REFERENCES artifacts(digest),
             created_at TEXT NOT NULL
         )
         """,
-        "CREATE INDEX idx_failures_project_status ON failures(project_id, status, created_at DESC)",
-        "CREATE INDEX idx_failures_experiment ON failures(experiment_id, created_at DESC)",
+        """
+        CREATE INDEX idx_failures_project_status
+        ON failures(project_id, status, created_at DESC)
+        """,
+        """
+        CREATE INDEX idx_failures_experiment
+        ON failures(experiment_id, created_at DESC)
+        """,
         """
         CREATE TABLE models (
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL REFERENCES projects(id),
             experiment_id TEXT NOT NULL REFERENCES experiments(id),
             model_artifact_digest TEXT NOT NULL REFERENCES artifacts(digest),
-            stage TEXT NOT NULL CHECK(stage IN ('EXPERIMENT', 'SHADOW', 'ADVISORY', 'RELEASE_CANDIDATE', 'INTEGRATION_APPROVED')),
+            stage TEXT NOT NULL CHECK(
+                stage IN (
+                    'EXPERIMENT', 'SHADOW', 'ADVISORY',
+                    'RELEASE_CANDIDATE', 'INTEGRATION_APPROVED'
+                )
+            ),
             compatibility_json TEXT NOT NULL DEFAULT '{}',
             manifest_artifact_digest TEXT REFERENCES artifacts(digest),
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
         """,
-        "CREATE INDEX idx_models_project_stage ON models(project_id, stage, updated_at DESC)",
+        """
+        CREATE INDEX idx_models_project_stage
+        ON models(project_id, stage, updated_at DESC)
+        """,
         """
         CREATE TABLE model_stage_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -248,7 +307,10 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             created_at TEXT NOT NULL
         )
         """,
-        "CREATE INDEX idx_dataset_imports_dataset ON dataset_imports(dataset_id, created_at DESC)",
+        """
+        CREATE INDEX idx_dataset_imports_dataset
+        ON dataset_imports(dataset_id, created_at DESC)
+        """,
         """
         CREATE TABLE regression_cases (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -257,7 +319,10 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
             promoted_at TEXT NOT NULL
         )
         """,
-        "CREATE INDEX idx_regression_suite ON regression_cases(suite_name, promoted_at DESC)",
+        """
+        CREATE INDEX idx_regression_suite
+        ON regression_cases(suite_name, promoted_at DESC)
+        """,
     ),
 }
 
@@ -316,7 +381,8 @@ class Database:
 
         with self.transaction() as conn:
             conn.execute(
-                "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+                "CREATE TABLE IF NOT EXISTS schema_meta "
+                "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
             for version in range(current_version + 1, SCHEMA_VERSION + 1):
                 try:

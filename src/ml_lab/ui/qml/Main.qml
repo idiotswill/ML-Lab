@@ -30,6 +30,30 @@ ApplicationWindow {
     palette.highlightedText: Theme.accentText
     palette.placeholderText: Theme.dim
 
+    Shortcut {
+        sequence: "Ctrl+1"
+        enabled: appController.hasWorkspace
+        onActivated: window.currentPage = 0
+    }
+
+    Shortcut {
+        sequence: "Ctrl+2"
+        enabled: appController.hasWorkspace
+        onActivated: window.currentPage = 1
+    }
+
+    Shortcut {
+        sequence: "Ctrl+3"
+        enabled: appController.hasWorkspace
+        onActivated: window.currentPage = 2
+    }
+
+    Shortcut {
+        sequence: "Ctrl+4"
+        enabled: appController.hasWorkspace
+        onActivated: window.currentPage = 3
+    }
+
     Connections {
         target: appController
 
@@ -169,6 +193,9 @@ ApplicationWindow {
                                 text: modelData
                                 checkable: true
                                 checked: window.currentPage === index
+                                activeFocusOnTab: true
+                                Accessible.role: Accessible.Button
+                                Accessible.name: modelData
                                 onClicked: window.currentPage = index
 
                                 contentItem: Text {
@@ -184,7 +211,10 @@ ApplicationWindow {
                                     radius: 8
                                     color: parent.checked ? Theme.accentSurface
                                                           : (parent.hovered ? Theme.hover : "transparent")
-                                    border.color: parent.checked ? Theme.accentBorder : "transparent"
+                                    border.color: parent.activeFocus ? Theme.accent
+                                                                    : (parent.checked ? Theme.accentBorder
+                                                                                      : "transparent")
+                                    border.width: parent.activeFocus ? 2 : 1
                                 }
                             }
                         }

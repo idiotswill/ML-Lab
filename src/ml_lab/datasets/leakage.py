@@ -5,8 +5,8 @@ import json
 import re
 import unicodedata
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
 
 from ml_lab.core.models import DatasetSplit
 
@@ -153,7 +153,7 @@ def _scan_grouped(
     examples: list[LeakageExample],
     *,
     key_name: str,
-    key_getter: Any,
+    key_getter: Callable[[LeakageExample], str],
     detail: str,
     issues: list[LeakageIssue],
     emitted: set[tuple[str, str, str]],
@@ -161,7 +161,7 @@ def _scan_grouped(
 ) -> None:
     groups: dict[str, list[LeakageExample]] = defaultdict(list)
     for example in examples:
-        groups[str(key_getter(example))].append(example)
+        groups[key_getter(example)].append(example)
     for group in groups.values():
         if len(group) < 2:
             continue
@@ -214,7 +214,8 @@ def _scan_near(
             for candidate in bands[(band, value)]:
                 candidates[candidate.example_id] = candidate
         for candidate in candidates.values():
-            pair = tuple(sorted((example.example_id, candidate.example_id)))
+            first, second = sorted((example.example_id, candidate.example_id))
+            pair = (first, second)
             if pair in compared:
                 continue
             compared.add(pair)

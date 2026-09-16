@@ -291,6 +291,10 @@ class AppController(QObject):
         self._selected_project_id = ""
         self._catalog = ExtensionCatalog(services.workspace.root)
         self._catalog.load()
+        # A probe for a previous workspace may still be running. Reset the guard
+        # so the new workspace always gets its own queued probe; stale results are
+        # discarded by the workspace key in the completion slots below.
+        self._diagnostics_loading = False
         self._refresh_diagnostics()
         self._poller.start()
         self.extensionsChanged.emit()

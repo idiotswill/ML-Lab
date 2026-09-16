@@ -9,7 +9,7 @@ ApplicationWindow {
 
     visible: true
     width: 1280
-    height: 800
+    height: 720
     minimumWidth: 960
     minimumHeight: 640
     title: "Frankenhomie ML Lab"

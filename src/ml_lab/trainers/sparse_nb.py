@@ -79,26 +79,38 @@ class SparseNBModel:
             raise ValueError("class_feature_totals must be an object")
         if not isinstance(raw_counts, dict):
             raise ValueError("feature_counts must be an object")
-        documents = {str(key): int(count) for key, count in raw_documents.items()}
-        totals = {str(key): int(count) for key, count in raw_totals.items()}
+        documents = {
+            str(key): _require_int(count, f"class_documents.{key}")
+            for key, count in raw_documents.items()
+        }
+        totals = {
+            str(key): _require_int(count, f"class_feature_totals.{key}")
+            for key, count in raw_totals.items()
+        }
         counts: dict[str, dict[int, int]] = {}
         for raw_label, raw_features in raw_counts.items():
             if not isinstance(raw_features, dict):
                 raise ValueError("feature_counts entries must be objects")
-            counts[str(raw_label)] = {
-                int(feature_id): int(count)
-                for feature_id, count in raw_features.items()
-            }
+            label = str(raw_label)
+            feature_map: dict[int, int] = {}
+            for feature_id, count in raw_features.items():
+                key = _require_int(feature_id, f"feature_counts.{label}.feature_id")
+                feature_map[key] = _require_int(
+                    count,
+                    f"feature_counts.{label}.{feature_id}",
+                )
+            counts[label] = feature_map
         if set(documents) != set(totals) or set(documents) != set(counts):
             raise ValueError("Sparse NB model class maps disagree")
-        feature_dim = int(value.get("feature_dim", 0))
-        alpha = float(value.get("alpha", 0.0))
+        feature_dim = _require_int(value.get("feature_dim", 0), "feature_dim")
+        alpha = _require_float(value.get("alpha", 0.0), "alpha")
+        format_version = _require_int(value.get("format_version", 1), "format_version")
         if feature_dim < 256:
             raise ValueError("feature_dim must be >= 256")
         if alpha <= 0:
             raise ValueError("alpha must be > 0")
         return cls(
-            format_version=int(value.get("format_version", 1)),
+            format_version=format_version,
             feature_dim=feature_dim,
             alpha=alpha,
             text_key=str(value.get("text_key", "text")),
@@ -219,6 +231,27 @@ def read_jsonl_records(paths: Sequence[Path]) -> Iterable[dict[str, object]]:
                         f"{path}:{line_number}: row must be a JSON object"
                     )
                 yield {str(key): value for key, value in decoded.items()}
+
+
+def _require_int(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError(f"{field} must be an integer")
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{field} must be an integer") from exc
+
+
+def _require_float(value: object, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError(f"{field} must be numeric")
+    try:
+        result = float(value)
+    except ValueError as exc:
+        raise ValueError(f"{field} must be numeric") from exc
+    if not math.isfinite(result):
+        raise ValueError(f"{field} must be finite")
+    return result
 
 
 def _hashed_features(text: str, feature_dim: int) -> Counter[int]:

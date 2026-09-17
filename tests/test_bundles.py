@@ -3,6 +3,8 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from ml_lab.bundles.service import BundleService
 from ml_lab.bundles.verify import verify_bundle_file
 from ml_lab.core.models import (
@@ -119,6 +121,32 @@ def test_bundle_is_deterministic_split_safe_and_fresh_verifiable(tmp_path: Path)
     )
     assert receipt_payload["fresh_process"] is True
     assert receipt_payload["status"] == "PASS"
+
+
+def test_bundle_app_reads_receipts_and_hash_checked_export(tmp_path: Path) -> None:
+    workspace, model_id = _release_candidate(tmp_path)
+    service = BundleService(workspace)
+    first = service.build_release_candidate(model_id)
+    second = service.build_release_candidate(model_id)
+    project_id = ModelRegistryService(workspace).get(model_id).project_id
+
+    project_bundles = service.list_for_project(project_id)
+    model_bundles = service.list_for_model(model_id)
+    assert {item.id for item in project_bundles} == {first.id, second.id}
+    assert {item.id for item in model_bundles} == {first.id, second.id}
+
+    receipt = service.verify_fresh(first.id)
+    payload = service.receipt_payload(receipt.id)
+    assert payload["status"] == "PASS"
+    assert payload["fresh_process"] is True
+    assert payload["integration_gate"] == "NO_GO"
+
+    exported = service.export_bundle(first.id, tmp_path / "exports" / "candidate")
+    assert exported.name == "candidate.zip"
+    assert hashlib.sha256(exported.read_bytes()).hexdigest() == first.bundle_artifact_digest
+
+    with pytest.raises(ValueError, match="immutable artifact store"):
+        service.export_bundle(first.id, workspace.artifacts.root / "forbidden.zip")
 
 
 def test_bundle_hash_tampering_is_rejected(tmp_path: Path) -> None:

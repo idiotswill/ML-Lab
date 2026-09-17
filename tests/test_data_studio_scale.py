@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -12,7 +11,6 @@ from ml_lab.storage.workspace import Workspace
 from ml_lab.ui.data_studio import DataStudioController
 
 _ROW_COUNT = 100_000
-_BATCH_SIZE = 5_000
 _EXPECTED_COUNTS = {
     DatasetSplit.TRAIN: 70_000,
     DatasetSplit.DEV: 10_000,
@@ -31,62 +29,39 @@ def _split_for(index: int) -> DatasetSplit:
     return DatasetSplit.REDTEAM
 
 
-def _seed_rows(workspace: Workspace, dataset_id: str) -> None:
-    created_at = "2026-01-01T00:00:00+00:00"
-    insert_sql = (
-        "INSERT INTO dataset_examples("
-        "dataset_id,example_id,split,source_id,lineage_group,fingerprint,"
-        "normalized_fingerprint,near_signature,payload_json,label_json,tags_json,created_at"
-        ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"
-    )
-    with workspace.database.transaction() as conn:
-        for start in range(0, _ROW_COUNT, _BATCH_SIZE):
-            batch = []
-            for index in range(start, min(start + _BATCH_SIZE, _ROW_COUNT)):
-                example_id = f"scale-{index:06d}"
-                split = _split_for(index)
-                payload_json = json.dumps(
-                    {"text": f"scale payload {index:06d}"},
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-                fingerprint = hashlib.sha256(example_id.encode("utf-8")).hexdigest()
-                near = hashlib.blake2b(
-                    f"near:{index}".encode("utf-8"),
-                    digest_size=8,
-                ).hexdigest()
-                batch.append(
-                    (
-                        dataset_id,
-                        example_id,
-                        split.value,
-                        f"synthetic:{example_id}",
-                        f"lineage:{example_id}",
-                        fingerprint,
-                        fingerprint,
-                        near,
-                        payload_json,
-                        '{"class":"A"}',
-                        "[]",
-                        created_at,
-                    )
-                )
-            conn.executemany(insert_sql, batch)
-        conn.execute(
-            "UPDATE dataset_versions SET example_count=? WHERE id=?",
-            (_ROW_COUNT, dataset_id),
-        )
+def _write_jsonl_source(path: Path) -> None:
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        for index in range(_ROW_COUNT):
+            example_id = f"scale-{index:06d}"
+            row = {
+                "example_id": example_id,
+                "split": _split_for(index).value,
+                "source_id": f"synthetic:{example_id}",
+                "lineage_group": f"lineage:{example_id}",
+                "payload": index,
+                "label": {"class": "A"},
+                "tags": ["scale"],
+            }
+            handle.write(json.dumps(row, sort_keys=True, separators=(",", ":")))
+            handle.write("\n")
 
 
 @pytest.mark.scale
-def test_data_studio_freezes_and_pages_one_hundred_thousand_examples(
+def test_data_studio_imports_freezes_and_pages_one_hundred_thousand_examples(
     tmp_path: Path,
 ) -> None:
     workspace = Workspace.create(tmp_path / "workspace")
     project = workspace.create_project("Data scale", "generic")
     datasets = DatasetService(workspace)
     dataset = datasets.create(project.id, "scale-100k")
-    _seed_rows(workspace, dataset.id)
+    source = tmp_path / "scale-100k.jsonl"
+    _write_jsonl_source(source)
+
+    imported = datasets.import_jsonl(dataset.id, source)
+    assert imported.imported == _ROW_COUNT
+    assert imported.rejected == 0
+    assert imported.errors == ()
+    assert datasets.get(dataset.id).example_count == _ROW_COUNT
 
     controller = DataStudioController()
     controller.bind_project(workspace, project.id, "generic")

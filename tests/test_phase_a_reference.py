@@ -1,6 +1,6 @@
 import json
-import subprocess
 from pathlib import Path
+import subprocess
 
 from ml_lab.adapters.phase_a_reference import PhaseAReferenceValidator
 from ml_lab.storage.workspace import Workspace
@@ -44,8 +44,7 @@ def _git(repo: Path, *args: str) -> str:
     completed = subprocess.run(
         ["git", "-C", str(repo), *args],
         check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
         encoding="utf-8",
     )

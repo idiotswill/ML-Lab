@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from PySide6.QtCore import Property, QObject, Signal, Slot
+from PySide6.QtCore import Property, QCoreApplication, QObject, Signal, Slot
 
 from ml_lab.core.models import (
     ExperimentRecord,
@@ -13,6 +13,7 @@ from ml_lab.core.models import (
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.models.registry import ModelRegistryService
 from ml_lab.storage.workspace import Workspace
+from ml_lab.ui.contracts import ContractSnapshotsController
 from ml_lab.ui.package_verify import PackageVerifyController
 
 
@@ -30,6 +31,12 @@ class ModelsRegistryController(QObject):
         self._package_verify = PackageVerifyController(self)
         self._package_verify.operationCompleted.connect(self.operationCompleted.emit)
         self._package_verify.operationFailed.connect(self.operationFailed.emit)
+        self._contract_snapshots = ContractSnapshotsController(self)
+        self._contract_snapshots.operationCompleted.connect(self.operationCompleted.emit)
+        self._contract_snapshots.operationFailed.connect(self.operationFailed.emit)
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.shutdown)
 
     def bind_project(self, workspace: Workspace, project_id: str, adapter_id: str) -> None:
         self._workspace = workspace
@@ -37,6 +44,7 @@ class ModelsRegistryController(QObject):
         self._adapter_id = adapter_id
         self._selected_model_id = ""
         self._package_verify.bind_project(workspace, project_id, adapter_id)
+        self._contract_snapshots.bind_project(workspace, project_id, adapter_id)
         self.changed.emit()
 
     def clear_project(self) -> None:
@@ -45,11 +53,21 @@ class ModelsRegistryController(QObject):
         self._adapter_id = "generic"
         self._selected_model_id = ""
         self._package_verify.clear_project()
+        self._contract_snapshots.clear_project()
         self.changed.emit()
+
+    @Slot()
+    def shutdown(self) -> None:
+        self._package_verify.shutdown()
+        self._contract_snapshots.shutdown()
 
     @Property(QObject, constant=True)
     def packageVerify(self) -> QObject:
         return self._package_verify
+
+    @Property(QObject, constant=True)
+    def contractSnapshots(self) -> QObject:
+        return self._contract_snapshots
 
     @Property(bool, notify=changed)
     def hasProject(self) -> bool:

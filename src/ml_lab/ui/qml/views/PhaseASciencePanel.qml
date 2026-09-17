@@ -204,11 +204,11 @@ Panel {
 
                         LabButton {
                             text: scienceController.providerExistingExperimentId ?
-                                      "Local provider ✓" : "Run local provider"
+                                      "Run local provider again" : "Run local provider"
                             primary: true
                             enabled: !scienceController.busy &&
                                      scienceController.providerConfigValid &&
-                                     compareController.selectedExperiment.id
+                                     String(compareController.selectedExperiment.id || "").length > 0
                             onClicked: {
                                 scienceController.setProviderModel(modelField.text)
                                 scienceController.setProviderEndpoint(endpointField.text)
@@ -223,7 +223,7 @@ Panel {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Manual run only. http:// localhost / loopback IPs are accepted; no remote API or key path exists here."
+                        text: "Manual run only. http:// localhost / loopback IPs are accepted; no remote API or key path exists here. Each rerun is preserved as new immutable evidence."
                         color: Theme.dim
                         font.pixelSize: 8
                         wrapMode: Text.WordWrap

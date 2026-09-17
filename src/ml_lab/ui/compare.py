@@ -301,12 +301,7 @@ class CompareController(QObject):
                 "Only completed experiments can be compared.",
             )
             return
-        if not any(row["id"] == record.id for row in self._load_comparison_rows()):
-            self.operationFailed.emit(
-                "Compare error",
-                "Experiment is not on the current comparison page.",
-            )
-            return
+        self._experiment_offset = self._experiment_page_offset(record.id)
         self._selected_experiment_id = record.id
         self._offset = 0
         self._selected_case_id = 0
@@ -505,6 +500,25 @@ class CompareController(QObject):
                 (self._project_id, ExperimentStatus.COMPLETED.value),
             ).fetchone()
         return int(row[0]) if row else 0
+
+    def _experiment_page_offset(self, experiment_id: str) -> int:
+        if not self._workspace or not self._project_id:
+            return 0
+        with self._workspace.database.connection() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM experiments e "
+                "JOIN experiments target ON target.id=? "
+                "WHERE e.project_id=? AND e.status=? AND "
+                "(e.created_at>target.created_at OR "
+                "(e.created_at=target.created_at AND e.id>target.id))",
+                (
+                    experiment_id,
+                    self._project_id,
+                    ExperimentStatus.COMPLETED.value,
+                ),
+            ).fetchone()
+        position = int(row[0]) if row else 0
+        return (position // self._experiment_page_size) * self._experiment_page_size
 
     def _load_comparison_rows(self) -> list[dict[str, object]]:
         if not self._workspace or not self._project_id:

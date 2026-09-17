@@ -41,14 +41,16 @@ def main() -> int:
             roots[0].setProperty("currentPage", 2)
             app.processEvents()
 
-        payload = {
-            "ok": ok,
-            "workspace": controller.workspacePath,
-            "project_count": len(controller.projects),
-            "experiments_page": 2,
-            "qml": str(qml_path),
-        }
-        print(json.dumps(payload, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "ok": ok,
+                    "experiments_page": 2,
+                    "qml": str(qml_path),
+                },
+                sort_keys=True,
+            )
+        )
         controller.shutdown()
         del engine
         del app

@@ -4,7 +4,11 @@ import json
 from contextlib import suppress
 from dataclasses import dataclass
 
-from ml_lab.adapters.phase_a import PHASE_A_ADAPTER_ID
+from ml_lab.adapters.phase_a import (
+    PHASE_A_ADAPTER_ID,
+    PHASE_A_CONTRACT_VERSION,
+)
+from ml_lab.contracts.snapshot import ContractSnapshotService
 from ml_lab.core.models import (
     TERMINAL_JOB_STATUSES,
     ExperimentRecord,
@@ -67,12 +71,7 @@ _BUILTIN_TRAINING_OPTIONS = (
 
 
 def training_options(adapter_id: str) -> tuple[TrainingOption, ...]:
-    """Return trainers that are both packaged and compatible with this adapter.
-
-    Model implementations that are not wired through the isolated worker boundary are
-    intentionally absent. The UI must never imply that an experimental Python class is
-    a runnable trainer merely because it exists in the source tree.
-    """
+    """Return trainers that are both packaged and compatible with this adapter."""
     return tuple(
         option
         for option in _BUILTIN_TRAINING_OPTIONS
@@ -134,6 +133,16 @@ class TrainingService:
         )
         if experiment.contract_snapshot_id is None:
             raise RuntimeError("Phase A training requires a pinned contract snapshot.")
+        snapshot = ContractSnapshotService(self.workspace).get(
+            experiment.contract_snapshot_id
+        )
+        if snapshot.project_id != experiment.project_id:
+            raise ValueError("Pinned contract snapshot belongs to a different project.")
+        if snapshot.adapter_id != PHASE_A_ADAPTER_ID:
+            raise ValueError("Pinned contract snapshot is not a Phase A residual contract.")
+        if snapshot.contract_version != PHASE_A_CONTRACT_VERSION:
+            raise ValueError("Pinned Phase A contract version is incompatible with training.")
+
         handles = self._training_handles(experiment.id, include_dev=False)
         staged = {"train.jsonl": handles["TRAIN"]}
         config = _config_object(experiment)

@@ -32,6 +32,13 @@ class SparseNBModel:
     def predict(self, text: str) -> tuple[str, dict[str, float]]:
         if not self.class_documents:
             raise RuntimeError("Model has no classes.")
+        scores = self.score(text)
+        winner = max(scores, key=scores.__getitem__)
+        return winner, scores
+
+    def score(self, text: str) -> dict[str, float]:
+        if not self.class_documents:
+            raise RuntimeError("Model has no classes.")
         features = _hashed_features(text, self.feature_dim)
         total_documents = sum(self.class_documents.values())
         class_count = len(self.class_documents)
@@ -50,8 +57,7 @@ class SparseNBModel:
                 likelihood = math.log(numerator / denominator)
                 score += frequency * likelihood
             scores[label] = score
-        winner = max(scores, key=scores.__getitem__)
-        return winner, scores
+        return scores
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -140,6 +146,64 @@ class SparseNBModel:
         return cls.from_dict({str(key): item for key, item in decoded.items()})
 
 
+class SparseNBBuilder:
+    """Incremental builder used by streaming trainers and bounded adapter heads."""
+
+    def __init__(
+        self,
+        *,
+        text_key: str = "text",
+        label_key: str = "class",
+        feature_dim: int = 32768,
+        alpha: float = 0.5,
+    ) -> None:
+        if feature_dim < 256:
+            raise ValueError("feature_dim must be >= 256")
+        if alpha <= 0:
+            raise ValueError("alpha must be > 0")
+        self.text_key = text_key
+        self.label_key = label_key
+        self.feature_dim = feature_dim
+        self.alpha = alpha
+        self._class_documents: Counter[str] = Counter()
+        self._class_totals: Counter[str] = Counter()
+        self._feature_counts: defaultdict[str, Counter[int]] = defaultdict(Counter)
+        self._examples = 0
+
+    @property
+    def example_count(self) -> int:
+        return self._examples
+
+    def add(self, text: str, label: str) -> None:
+        clean_text = text.strip()
+        clean_label = label.strip()
+        if not clean_text:
+            raise ValueError("training text must be non-empty")
+        if not clean_label:
+            raise ValueError("training label must be non-empty")
+        features = _hashed_features(clean_text, self.feature_dim)
+        self._class_documents[clean_label] += 1
+        self._class_totals[clean_label] += sum(features.values())
+        self._feature_counts[clean_label].update(features)
+        self._examples += 1
+
+    def finish(self) -> SparseNBModel:
+        if self._examples == 0:
+            raise ValueError("Training data is empty")
+        return SparseNBModel(
+            format_version=1,
+            feature_dim=self.feature_dim,
+            alpha=self.alpha,
+            text_key=self.text_key,
+            label_key=self.label_key,
+            class_documents=dict(self._class_documents),
+            class_feature_totals=dict(self._class_totals),
+            feature_counts={
+                label: dict(counts) for label, counts in self._feature_counts.items()
+            },
+        )
+
+
 def train_sparse_nb(
     records: Iterable[Mapping[str, object]],
     *,
@@ -150,14 +214,12 @@ def train_sparse_nb(
     cancelled: Callable[[], bool] | None = None,
     on_example: Callable[[int], None] | None = None,
 ) -> tuple[SparseNBModel, int]:
-    if feature_dim < 256:
-        raise ValueError("feature_dim must be >= 256")
-    if alpha <= 0:
-        raise ValueError("alpha must be > 0")
-    class_documents: Counter[str] = Counter()
-    class_totals: Counter[str] = Counter()
-    feature_counts: defaultdict[str, Counter[int]] = defaultdict(Counter)
-    examples = 0
+    builder = SparseNBBuilder(
+        text_key=text_key,
+        label_key=label_key,
+        feature_dim=feature_dim,
+        alpha=alpha,
+    )
     for record in records:
         if cancelled is not None and cancelled():
             raise InterruptedError("Cancellation requested")
@@ -171,27 +233,10 @@ def train_sparse_nb(
             raise ValueError(f"payload.{text_key} must be a non-empty string")
         if not isinstance(raw_label, str) or not raw_label.strip():
             raise ValueError(f"label.{label_key} must be a non-empty string")
-        label = raw_label.strip()
-        features = _hashed_features(text, feature_dim)
-        class_documents[label] += 1
-        class_totals[label] += sum(features.values())
-        feature_counts[label].update(features)
-        examples += 1
+        builder.add(text, raw_label)
         if on_example is not None:
-            on_example(examples)
-    if examples == 0:
-        raise ValueError("Training data is empty")
-    model = SparseNBModel(
-        format_version=1,
-        feature_dim=feature_dim,
-        alpha=alpha,
-        text_key=text_key,
-        label_key=label_key,
-        class_documents=dict(class_documents),
-        class_feature_totals=dict(class_totals),
-        feature_counts={label: dict(counts) for label, counts in feature_counts.items()},
-    )
-    return model, examples
+            on_example(builder.example_count)
+    return builder.finish(), builder.example_count
 
 
 def evaluate_sparse_nb(

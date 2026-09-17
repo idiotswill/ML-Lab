@@ -30,47 +30,14 @@ ApplicationWindow {
     palette.highlightedText: Theme.accentText
     palette.placeholderText: Theme.dim
 
-    Shortcut {
-        sequence: "Ctrl+1"
-        enabled: appController.hasWorkspace
-        onActivated: window.currentPage = 0
-    }
-
-    Shortcut {
-        sequence: "Ctrl+2"
-        enabled: appController.hasWorkspace
-        onActivated: window.currentPage = 1
-    }
-
-    Shortcut {
-        sequence: "Ctrl+3"
-        enabled: appController.hasWorkspace
-        onActivated: window.currentPage = 2
-    }
-
-    Shortcut {
-        sequence: "Ctrl+4"
-        enabled: appController.hasWorkspace
-        onActivated: window.currentPage = 3
-    }
-
-    Shortcut {
-        sequence: "Ctrl+5"
-        enabled: appController.hasWorkspace
-        onActivated: window.currentPage = 4
-    }
-
-    Shortcut {
-        sequence: "Ctrl+6"
-        enabled: appController.hasWorkspace
-        onActivated: window.currentPage = 5
-    }
-
-    Shortcut {
-        sequence: "Ctrl+7"
-        enabled: appController.hasWorkspace
-        onActivated: window.currentPage = 6
-    }
+    Shortcut { sequence: "Ctrl+1"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 0 }
+    Shortcut { sequence: "Ctrl+2"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 1 }
+    Shortcut { sequence: "Ctrl+3"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 2 }
+    Shortcut { sequence: "Ctrl+4"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 3 }
+    Shortcut { sequence: "Ctrl+5"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 4 }
+    Shortcut { sequence: "Ctrl+6"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 5 }
+    Shortcut { sequence: "Ctrl+7"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 6 }
+    Shortcut { sequence: "Ctrl+8"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 7 }
 
     Connections {
         target: appController
@@ -205,6 +172,7 @@ ApplicationWindow {
                                 "Data Studio",
                                 "Experiments",
                                 "Compare",
+                                "Red Team & Failures",
                                 "Jobs",
                                 "Diagnostics",
                                 "Settings"
@@ -244,9 +212,7 @@ ApplicationWindow {
                             }
                         }
 
-                        Item {
-                            Layout.fillHeight: true
-                        }
+                        Item { Layout.fillHeight: true }
 
                         Rectangle {
                             Layout.fillWidth: true
@@ -262,9 +228,7 @@ ApplicationWindow {
                                 tone: "warn"
                             }
 
-                            Item {
-                                Layout.fillWidth: true
-                            }
+                            Item { Layout.fillWidth: true }
                         }
                     }
                 }
@@ -282,6 +246,7 @@ ApplicationWindow {
                         DataStudioView {}
                         ExperimentsView {}
                         CompareView {}
+                        RedTeamFailuresView {}
                         JobsView {}
                         DiagnosticsView {}
                         SettingsView {}

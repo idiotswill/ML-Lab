@@ -112,6 +112,24 @@ class FailureService:
         project_id: str,
         *,
         severity: FailureSeverity | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> list[FailureRecord]:
+        return [
+            entry.failure
+            for entry in self.page_entries_for_project(
+                project_id,
+                severity=severity,
+                offset=offset,
+                limit=limit,
+            )
+        ]
+
+    def page_entries_for_project(
+        self,
+        project_id: str,
+        *,
+        severity: FailureSeverity | None = None,
         regression_only: bool = False,
         suite_name: str = "default",
         offset: int = 0,

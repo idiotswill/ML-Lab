@@ -6,7 +6,8 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QRunnable, QThreadPool, QUrl, Signal, Slot
 
-from ml_lab.adapters.builtin import dataset_validator_for
+from ml_lab.adapters.builtin import contract_capture_descriptor_for, dataset_validator_for
+from ml_lab.contracts.snapshot import ContractSnapshotService
 from ml_lab.core.models import DatasetExample, DatasetSplit, DatasetState, DatasetVersion
 from ml_lab.datasets.service import DatasetService
 from ml_lab.storage.workspace import Workspace
@@ -122,6 +123,32 @@ class DataStudioController(QObject):
     def busyMessage(self) -> str:
         return self._busy_message
 
+    @Property(bool, notify=changed)
+    def requiresContractSnapshot(self) -> bool:
+        if not self._project_id:
+            return False
+        try:
+            return contract_capture_descriptor_for(self._adapter_id) is not None
+        except KeyError:
+            return False
+
+    @Property(list, notify=changed)
+    def contractSnapshots(self) -> list[dict[str, str]]:
+        if not self._workspace or not self._project_id:
+            return []
+        return [
+            {
+                "id": item.id,
+                "name": f"{item.commit_sha[:12]} · {item.contract_version}",
+                "commitSha": item.commit_sha,
+                "contractVersion": item.contract_version,
+            }
+            for item in ContractSnapshotService(self._workspace).list_for_project(
+                self._project_id
+            )
+            if item.adapter_id == self._adapter_id
+        ]
+
     @Property(str, notify=changed)
     def splitFilter(self) -> str:
         return self._split_filter
@@ -183,13 +210,29 @@ class DataStudioController(QObject):
             )
         ]
 
-    @Slot(str)
-    def createDataset(self, name: str) -> None:
+    @Slot(str, str)
+    def createDataset(self, name: str, contract_snapshot_id: str) -> None:
         if not self._workspace or not self._project_id:
             self.operationFailed.emit("Dataset error", "Open a project first.")
             return
         try:
-            item = DatasetService(self._workspace).create(self._project_id, name)
+            snapshot_id = contract_snapshot_id.strip() or None
+            descriptor = contract_capture_descriptor_for(self._adapter_id)
+            if descriptor is not None and snapshot_id is None:
+                raise ValueError(
+                    "This adapter requires a frozen contract snapshot before creating a dataset."
+                )
+            if snapshot_id is not None:
+                snapshot = ContractSnapshotService(self._workspace).get(snapshot_id)
+                if snapshot.project_id != self._project_id:
+                    raise ValueError("Contract snapshot belongs to a different project.")
+                if snapshot.adapter_id != self._adapter_id:
+                    raise ValueError("Contract snapshot adapter does not match this project.")
+            item = DatasetService(self._workspace).create(
+                self._project_id,
+                name,
+                contract_snapshot_id=snapshot_id,
+            )
         except Exception as exc:
             self.operationFailed.emit("Dataset error", str(exc))
             return

@@ -105,8 +105,8 @@ Item {
             orientation: Qt.Horizontal
 
             Panel {
-                SplitView.preferredWidth: 280
-                SplitView.minimumWidth: 220
+                SplitView.preferredWidth: 230
+                SplitView.minimumWidth: 160
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -212,8 +212,8 @@ Item {
             }
 
             Panel {
-                SplitView.preferredWidth: 310
-                SplitView.minimumWidth: 240
+                SplitView.preferredWidth: 250
+                SplitView.minimumWidth: 180
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -316,14 +316,14 @@ Item {
 
             Panel {
                 SplitView.fillWidth: true
-                SplitView.minimumWidth: 390
+                SplitView.minimumWidth: 260
 
                 ScrollView {
                     anchors.fill: parent
                     clip: true
 
                     ColumnLayout {
-                        width: Math.max(parent.width - 20, 360)
+                        width: Math.max(parent.width - 20, 240)
                         spacing: 10
 
                         Text {

@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from ml_lab.core.models import DatasetSplit, DatasetState
+from ml_lab.datasets.leakage import LeakageExample, scan_leakage
 from ml_lab.datasets.service import DatasetLeakageError, DatasetService, ValidatedExampleInput
 from ml_lab.storage.workspace import Workspace
 
@@ -159,3 +160,52 @@ def test_lineage_group_crossing_partitions_is_blocking(tmp_path: Path) -> None:
         )
     report = datasets.scan_leakage(dataset.id)
     assert any(issue.kind == "LINEAGE_LEAKAGE" and issue.blocking for issue in report.issues)
+
+
+def test_streaming_leakage_scan_preserves_normalized_and_near_duplicate_checks() -> None:
+    def examples():
+        yield LeakageExample(
+            example_id="train-normalized",
+            split=DatasetSplit.TRAIN,
+            lineage_group="lineage-a",
+            fingerprint="exact-a",
+            normalized_fingerprint="normalized-shared",
+            near_signature="0000000000000000",
+        )
+        yield LeakageExample(
+            example_id="test-normalized",
+            split=DatasetSplit.TEST,
+            lineage_group="lineage-b",
+            fingerprint="exact-b",
+            normalized_fingerprint="normalized-shared",
+            near_signature="ffffffffffffffff",
+        )
+        yield LeakageExample(
+            example_id="train-near",
+            split=DatasetSplit.TRAIN,
+            lineage_group="lineage-c",
+            fingerprint="exact-c",
+            normalized_fingerprint="normalized-c",
+            near_signature="1234567890abcdef",
+        )
+        yield LeakageExample(
+            example_id="test-near",
+            split=DatasetSplit.TEST,
+            lineage_group="lineage-d",
+            fingerprint="exact-d",
+            normalized_fingerprint="normalized-d",
+            near_signature="1234567890abcdee",
+        )
+
+    report = scan_leakage(examples())
+    blocking = {
+        (issue.kind, issue.left_id, issue.right_id)
+        for issue in report.issues
+        if issue.blocking
+    }
+    assert (
+        "NORMALIZED_DUPLICATE",
+        "train-normalized",
+        "test-normalized",
+    ) in blocking
+    assert ("NEAR_DUPLICATE", "train-near", "test-near") in blocking

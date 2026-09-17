@@ -123,6 +123,30 @@ def test_evaluation_resumes_partial_partition_without_rewriting_cases(tmp_path: 
     assert service.progress(experiment_id, DatasetSplit.TEST).complete
 
 
+def test_evaluation_cancel_keeps_partial_evidence_resumable(tmp_path: Path) -> None:
+    workspace, experiment_id = _experiment(tmp_path)
+    service = EvaluationService(workspace)
+    cancel_requested = False
+
+    def evaluator(row: dict[str, object]) -> CaseOutcome:
+        nonlocal cancel_requested
+        cancel_requested = True
+        return CaseOutcome(observed=row["label"], correct=True, latency_ms=0.1)
+
+    with pytest.raises(InterruptedError, match="cancellation"):
+        service.evaluate_partition(
+            experiment_id,
+            DatasetSplit.TEST,
+            evaluator,
+            cancelled=lambda: cancel_requested,
+        )
+
+    progress = service.progress(experiment_id, DatasetSplit.TEST)
+    assert progress.evaluated == 1
+    assert progress.expected == 2
+    assert not progress.complete
+
+
 def test_evaluation_is_immutable_after_partition_completes(tmp_path: Path) -> None:
     workspace, experiment_id = _experiment(tmp_path)
     service = EvaluationService(workspace)

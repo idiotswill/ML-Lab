@@ -54,6 +54,12 @@ ApplicationWindow {
         onActivated: window.currentPage = 3
     }
 
+    Shortcut {
+        sequence: "Ctrl+5"
+        enabled: appController.hasWorkspace
+        onActivated: window.currentPage = 4
+    }
+
     Connections {
         target: appController
 
@@ -182,7 +188,7 @@ ApplicationWindow {
                         }
 
                         Repeater {
-                            model: ["Projects", "Jobs", "Diagnostics", "Settings"]
+                            model: ["Projects", "Data Studio", "Jobs", "Diagnostics", "Settings"]
 
                             delegate: Button {
                                 required property string modelData
@@ -209,11 +215,10 @@ ApplicationWindow {
 
                                 background: Rectangle {
                                     radius: 8
-                                    color: parent.checked ? Theme.accentSurface
-                                                          : (parent.hovered ? Theme.hover : "transparent")
-                                    border.color: parent.activeFocus ? Theme.accent
-                                                                    : (parent.checked ? Theme.accentBorder
-                                                                                      : "transparent")
+                                    color: parent.checked ? Theme.accentSurface :
+                                           (parent.hovered ? Theme.hover : "transparent")
+                                    border.color: parent.activeFocus ? Theme.accent :
+                                                  (parent.checked ? Theme.accentBorder : "transparent")
                                     border.width: parent.activeFocus ? 2 : 1
                                 }
                             }
@@ -254,6 +259,7 @@ ApplicationWindow {
                         currentIndex: window.currentPage
 
                         ProjectsView {}
+                        DataStudioView {}
                         JobsView {}
                         DiagnosticsView {}
                         SettingsView {}

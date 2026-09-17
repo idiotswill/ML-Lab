@@ -286,24 +286,25 @@ class DatasetService:
 
     def scan_leakage(self, dataset_id: str) -> LeakageReport:
         with self.database.connection() as conn:
-            rows = conn.execute(
+            cursor = conn.execute(
                 "SELECT example_id,split,lineage_group,fingerprint,"
                 "normalized_fingerprint,near_signature FROM dataset_examples "
                 "WHERE dataset_id=? ORDER BY example_id",
                 (dataset_id,),
-            ).fetchall()
-        examples = [
-            LeakageExample(
-                example_id=row["example_id"],
-                split=DatasetSplit(row["split"]),
-                lineage_group=row["lineage_group"],
-                fingerprint=row["fingerprint"],
-                normalized_fingerprint=row["normalized_fingerprint"],
-                near_signature=row["near_signature"],
             )
-            for row in rows
-        ]
-        return scan_leakage(examples)
+
+            def examples() -> object:
+                for row in cursor:
+                    yield LeakageExample(
+                        example_id=row["example_id"],
+                        split=DatasetSplit(row["split"]),
+                        lineage_group=row["lineage_group"],
+                        fingerprint=row["fingerprint"],
+                        normalized_fingerprint=row["normalized_fingerprint"],
+                        near_signature=row["near_signature"],
+                    )
+
+            return scan_leakage(examples())
 
     def freeze(self, dataset_id: str) -> DatasetVersion:
         dataset = self.get(dataset_id)
@@ -559,7 +560,7 @@ def _dataset_from_row(row: sqlite3.Row) -> DatasetVersion:
         name=row["name"],
         state=DatasetState(row["state"]),
         contract_snapshot_id=row["contract_snapshot_id"],
-        example_count=row["example_count"],
+        example_count=int(row["example_count"]),
         manifest_artifact_digest=row["manifest_artifact_digest"],
         leakage_report_artifact_digest=row["leakage_report_artifact_digest"],
         created_at=row["created_at"],

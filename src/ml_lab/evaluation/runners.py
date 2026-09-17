@@ -19,8 +19,8 @@ def evaluate_generic_sparse_experiment(
 ) -> tuple[EvaluationSummary, ...]:
     """Evaluate a completed generic sparse model on protected frozen partitions.
 
-    Training artifacts remain immutable. Evaluation appends one immutable case ledger
-    per protected split and refuses to overwrite any existing partition evidence.
+    Training artifacts remain immutable. Completed partition evidence is immutable;
+    interrupted partial ledgers resume by evaluating only missing example IDs.
     """
 
     experiments = ExperimentService(workspace)
@@ -50,9 +50,9 @@ def evaluate_generic_sparse_experiment(
         seen.add(split)
         if partitions.get(split, 0) <= 0:
             continue
-        existing = service.summary(experiment.id, split)
-        if existing.total:
-            summaries.append(existing)
+        progress = service.progress(experiment.id, split)
+        if progress.complete:
+            summaries.append(service.summary(experiment.id, split))
             continue
         summaries.append(service.evaluate_partition(experiment.id, split, evaluator))
     if not summaries:

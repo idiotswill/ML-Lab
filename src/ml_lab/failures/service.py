@@ -4,6 +4,7 @@ import json
 import sqlite3
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from ml_lab.core.models import (
     DatasetSplit,
@@ -14,6 +15,12 @@ from ml_lab.core.models import (
 )
 from ml_lab.datasets.leakage import canonical_json
 from ml_lab.storage.workspace import Workspace
+
+
+@dataclass(frozen=True, slots=True)
+class FailurePageEntry:
+    failure: FailureRecord
+    is_regression: bool
 
 
 class FailureService:
@@ -105,41 +112,64 @@ class FailureService:
         project_id: str,
         *,
         severity: FailureSeverity | None = None,
+        regression_only: bool = False,
+        suite_name: str = "default",
         offset: int = 0,
         limit: int = 100,
-    ) -> list[FailureRecord]:
+    ) -> list[FailurePageEntry]:
         if offset < 0:
             raise ValueError("offset must be >= 0")
         if not 1 <= limit <= 500:
             raise ValueError("limit must be between 1 and 500")
-        where = "project_id=?"
-        params: list[object] = [project_id]
+        clean_suite = suite_name.strip()
+        if not clean_suite:
+            raise ValueError("Regression suite name is required.")
+        where = "f.project_id=?"
+        params: list[object] = [clean_suite, project_id]
         if severity is not None:
-            where += " AND severity=?"
+            where += " AND f.severity=?"
             params.append(severity.value)
+        if regression_only:
+            where += " AND r.failure_id IS NOT NULL"
         params.extend((limit, offset))
         with self.database.connection() as conn:
             rows = conn.execute(
-                f"SELECT * FROM failures WHERE {where} "
-                "ORDER BY created_at DESC,id LIMIT ? OFFSET ?",
+                "SELECT f.*,CASE WHEN r.failure_id IS NULL THEN 0 ELSE 1 END "
+                f"AS is_regression FROM failures f LEFT JOIN regression_cases r "
+                f"ON r.failure_id=f.id AND r.suite_name=? WHERE {where} "
+                "ORDER BY f.created_at DESC,f.id LIMIT ? OFFSET ?",
                 tuple(params),
             ).fetchall()
-        return [_failure_from_row(row) for row in rows]
+        return [
+            FailurePageEntry(
+                failure=_failure_from_row(row),
+                is_regression=bool(row["is_regression"]),
+            )
+            for row in rows
+        ]
 
     def count_for_project(
         self,
         project_id: str,
         *,
         severity: FailureSeverity | None = None,
+        regression_only: bool = False,
+        suite_name: str = "default",
     ) -> int:
-        where = "project_id=?"
-        params: list[object] = [project_id]
+        clean_suite = suite_name.strip()
+        if not clean_suite:
+            raise ValueError("Regression suite name is required.")
+        where = "f.project_id=?"
+        params: list[object] = [clean_suite, project_id]
         if severity is not None:
-            where += " AND severity=?"
+            where += " AND f.severity=?"
             params.append(severity.value)
+        if regression_only:
+            where += " AND r.failure_id IS NOT NULL"
         with self.database.connection() as conn:
             row = conn.execute(
-                f"SELECT COUNT(*) FROM failures WHERE {where}",
+                "SELECT COUNT(*) FROM failures f LEFT JOIN regression_cases r "
+                f"ON r.failure_id=f.id AND r.suite_name=? WHERE {where}",
                 tuple(params),
             ).fetchone()
         return int(row[0]) if row else 0

@@ -87,6 +87,8 @@ class CompareController(QObject):
         self._project_id = ""
         self._adapter_id = "generic"
         self._selected_experiment_id = ""
+        self._experiment_offset = 0
+        self._experiment_page_size = 100
         self._split = DatasetSplit.TEST
         self._only_incorrect = False
         self._offset = 0
@@ -108,6 +110,7 @@ class CompareController(QObject):
         self._project_id = project_id
         self._adapter_id = adapter_id
         self._selected_experiment_id = ""
+        self._experiment_offset = 0
         self._split = DatasetSplit.TEST
         self._only_incorrect = False
         self._offset = 0
@@ -123,6 +126,7 @@ class CompareController(QObject):
         self._project_id = ""
         self._adapter_id = "generic"
         self._selected_experiment_id = ""
+        self._experiment_offset = 0
         self._split = DatasetSplit.TEST
         self._only_incorrect = False
         self._offset = 0
@@ -156,6 +160,25 @@ class CompareController(QObject):
     @Property(bool, notify=changed)
     def onlyIncorrect(self) -> bool:
         return self._only_incorrect
+
+    @Property(int, notify=changed)
+    def experimentPageNumber(self) -> int:
+        return (self._experiment_offset // self._experiment_page_size) + 1
+
+    @Property(int, notify=changed)
+    def experimentTotal(self) -> int:
+        return self._comparison_total()
+
+    @Property(bool, notify=changed)
+    def canPreviousExperimentPage(self) -> bool:
+        return self._experiment_offset > 0
+
+    @Property(bool, notify=changed)
+    def canNextExperimentPage(self) -> bool:
+        return (
+            self._experiment_offset + self._experiment_page_size
+            < self._comparison_total()
+        )
 
     @Property(int, notify=changed)
     def pageNumber(self) -> int:
@@ -278,9 +301,37 @@ class CompareController(QObject):
                 "Only completed experiments can be compared.",
             )
             return
+        if not any(row["id"] == record.id for row in self._load_comparison_rows()):
+            self.operationFailed.emit(
+                "Compare error",
+                "Experiment is not on the current comparison page.",
+            )
+            return
         self._selected_experiment_id = record.id
         self._offset = 0
         self._selected_case_id = 0
+        self.changed.emit()
+
+    @Slot()
+    def previousExperimentPage(self) -> None:
+        if self._experiment_offset <= 0:
+            return
+        self._experiment_offset = max(
+            0,
+            self._experiment_offset - self._experiment_page_size,
+        )
+        self._clear_selected_experiment()
+        self.changed.emit()
+
+    @Slot()
+    def nextExperimentPage(self) -> None:
+        if (
+            self._experiment_offset + self._experiment_page_size
+            >= self._comparison_total()
+        ):
+            return
+        self._experiment_offset += self._experiment_page_size
+        self._clear_selected_experiment()
         self.changed.emit()
 
     @Slot(str)
@@ -399,6 +450,11 @@ class CompareController(QObject):
             self._cancel_event.set()
         self._cancel_event = None
 
+    def _clear_selected_experiment(self) -> None:
+        self._selected_experiment_id = ""
+        self._offset = 0
+        self._selected_case_id = 0
+
     def _selected_record(self) -> ExperimentRecord | None:
         if not self._workspace or not self._selected_experiment_id:
             return None
@@ -440,33 +496,51 @@ class CompareController(QObject):
         progress = EvaluationService(self._workspace).progress(record.id, self._split)
         return progress.expected > 0 and not progress.complete
 
+    def _comparison_total(self) -> int:
+        if not self._workspace or not self._project_id:
+            return 0
+        with self._workspace.database.connection() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM experiments WHERE project_id=? AND status=?",
+                (self._project_id, ExperimentStatus.COMPLETED.value),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
     def _load_comparison_rows(self) -> list[dict[str, object]]:
         if not self._workspace or not self._project_id:
             return []
         with self._workspace.database.connection() as conn:
             rows = conn.execute(
+                "WITH page AS ("
                 "SELECT e.id,e.dataset_id,e.trainer_id,e.runtime_pack_id,e.created_at,"
                 "e.model_artifact_digest,d.name AS dataset_name,"
-                "COALESCE(dp.example_count,0) AS expected,COUNT(ec.id) AS evaluated,"
-                "COALESCE(SUM(ec.correct),0) AS correct,COUNT(f.id) AS failures,"
-                "COALESCE(SUM(CASE WHEN f.severity='VETO' THEN 1 ELSE 0 END),0) AS vetoes,"
-                "COALESCE(AVG(ec.latency_ms),0) AS mean_latency "
+                "COALESCE(dp.example_count,0) AS expected "
                 "FROM experiments e "
                 "JOIN dataset_versions d ON d.id=e.dataset_id "
                 "LEFT JOIN dataset_partitions dp "
                 "ON dp.dataset_id=e.dataset_id AND dp.split=? "
-                "LEFT JOIN evaluation_cases ec "
-                "ON ec.experiment_id=e.id AND ec.split=? "
-                "LEFT JOIN failures f ON f.id=ec.failure_id "
                 "WHERE e.project_id=? AND e.status=? "
-                "GROUP BY e.id,e.dataset_id,e.trainer_id,e.runtime_pack_id,e.created_at,"
-                "e.model_artifact_digest,d.name,dp.example_count "
-                "ORDER BY e.created_at DESC LIMIT 200",
+                "ORDER BY e.created_at DESC,e.id DESC LIMIT ? OFFSET ?"
+                ") "
+                "SELECT p.id,p.dataset_id,p.trainer_id,p.runtime_pack_id,p.created_at,"
+                "p.model_artifact_digest,p.dataset_name,p.expected,COUNT(ec.id) AS evaluated,"
+                "COALESCE(SUM(ec.correct),0) AS correct,COUNT(f.id) AS failures,"
+                "COALESCE(SUM(CASE WHEN f.severity='VETO' THEN 1 ELSE 0 END),0) AS vetoes,"
+                "COALESCE(AVG(ec.latency_ms),0) AS mean_latency "
+                "FROM page p "
+                "LEFT JOIN evaluation_cases ec "
+                "ON ec.experiment_id=p.id AND ec.split=? "
+                "LEFT JOIN failures f ON f.id=ec.failure_id "
+                "GROUP BY p.id,p.dataset_id,p.trainer_id,p.runtime_pack_id,p.created_at,"
+                "p.model_artifact_digest,p.dataset_name,p.expected "
+                "ORDER BY p.created_at DESC,p.id DESC",
                 (
-                    self._split.value,
                     self._split.value,
                     self._project_id,
                     ExperimentStatus.COMPLETED.value,
+                    self._experiment_page_size,
+                    self._experiment_offset,
+                    self._split.value,
                 ),
             ).fetchall()
         result: list[dict[str, object]] = []

@@ -74,15 +74,33 @@ def test_model_promotion_is_sequential_and_stops_before_integration(tmp_path: Pa
         compatibility={"adapter": "test", "contract": "v1"},
     )
     assert model.stage is ModelStage.EXPERIMENT
+    assert registry.find_by_experiment(experiment_id) == model
+    assert registry.next_stage(model.id) is ModelStage.SHADOW
+    assert registry.promotion_blockers(model.id) == ()
+
     model = registry.promote(model.id, ModelStage.SHADOW)
+    assert registry.next_stage(model.id) is ModelStage.ADVISORY
     model = registry.promote(model.id, ModelStage.ADVISORY)
+    assert registry.next_stage(model.id) is ModelStage.RELEASE_CANDIDATE
+    assert registry.promotion_blockers(model.id) == ()
     model = registry.promote(model.id, ModelStage.RELEASE_CANDIDATE)
     assert model.stage is ModelStage.RELEASE_CANDIDATE
+    assert registry.next_stage(model.id) is None
     assert len(registry.stage_history(model.id)) == 4
     assert len(registry.list_for_project(project_id)) == 1
 
     with pytest.raises(PermissionError, match="cannot be granted"):
         registry.promote(model.id, ModelStage.INTEGRATION_APPROVED)
+
+
+def test_model_registration_rejects_duplicate_experiment(tmp_path: Path) -> None:
+    workspace, _, experiment_id = _completed_model_experiment(tmp_path)
+    registry = ModelRegistryService(workspace)
+    first = registry.register_from_experiment(experiment_id)
+    assert registry.find_by_experiment(experiment_id) == first
+
+    with pytest.raises(RuntimeError, match="already registered"):
+        registry.register_from_experiment(experiment_id)
 
 
 def test_nonzero_veto_metric_blocks_release_candidate(tmp_path: Path) -> None:
@@ -91,6 +109,9 @@ def test_nonzero_veto_metric_blocks_release_candidate(tmp_path: Path) -> None:
     model = registry.register_from_experiment(experiment_id)
     model = registry.promote(model.id, ModelStage.SHADOW)
     model = registry.promote(model.id, ModelStage.ADVISORY)
+    blockers = registry.promotion_blockers(model.id)
+    assert len(blockers) == 1
+    assert "false_commitments" in blockers[0]
     with pytest.raises(RuntimeError, match="veto metric"):
         registry.promote(model.id, ModelStage.RELEASE_CANDIDATE)
 
@@ -119,5 +140,8 @@ def test_failure_regression_membership_preserves_historical_payload(tmp_path: Pa
     model = registry.register_from_experiment(experiment_id)
     model = registry.promote(model.id, ModelStage.SHADOW)
     model = registry.promote(model.id, ModelStage.ADVISORY)
+    blockers = registry.promotion_blockers(model.id)
+    assert len(blockers) == 1
+    assert "unresolved veto failure" in blockers[0]
     with pytest.raises(RuntimeError, match="veto failure"):
         registry.promote(model.id, ModelStage.RELEASE_CANDIDATE)

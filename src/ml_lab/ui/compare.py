@@ -146,13 +146,7 @@ class CompareController(QObject):
 
     @Property(int, notify=changed)
     def caseTotal(self) -> int:
-        if not self._workspace or not self._selected_experiment_id:
-            return 0
-        return EvaluationService(self._workspace).case_count(
-            self._selected_experiment_id,
-            self._split,
-            only_incorrect=self._only_incorrect,
-        )
+        return self._case_total()
 
     @Property(bool, notify=changed)
     def canPreviousPage(self) -> bool:
@@ -164,65 +158,13 @@ class CompareController(QObject):
 
     @Property(list, notify=changed)
     def comparisonRows(self) -> list[dict[str, object]]:
-        if not self._workspace or not self._project_id:
-            return []
-        with self._workspace.database.connection() as conn:
-            rows = conn.execute(
-                "SELECT e.id,e.dataset_id,e.trainer_id,e.runtime_pack_id,e.created_at,"
-                "e.model_artifact_digest,d.name AS dataset_name,"
-                "COALESCE(dp.example_count,0) AS expected,COUNT(ec.id) AS evaluated,"
-                "COALESCE(SUM(ec.correct),0) AS correct,COUNT(f.id) AS failures,"
-                "COALESCE(SUM(CASE WHEN f.severity='VETO' THEN 1 ELSE 0 END),0) AS vetoes,"
-                "COALESCE(AVG(ec.latency_ms),0) AS mean_latency "
-                "FROM experiments e "
-                "JOIN dataset_versions d ON d.id=e.dataset_id "
-                "LEFT JOIN dataset_partitions dp "
-                "ON dp.dataset_id=e.dataset_id AND dp.split=? "
-                "LEFT JOIN evaluation_cases ec "
-                "ON ec.experiment_id=e.id AND ec.split=? "
-                "LEFT JOIN failures f ON f.id=ec.failure_id "
-                "WHERE e.project_id=? AND e.status=? "
-                "GROUP BY e.id,e.dataset_id,e.trainer_id,e.runtime_pack_id,e.created_at,"
-                "e.model_artifact_digest,d.name,dp.example_count "
-                "ORDER BY e.created_at DESC LIMIT 200",
-                (
-                    self._split.value,
-                    self._split.value,
-                    self._project_id,
-                    ExperimentStatus.COMPLETED.value,
-                ),
-            ).fetchall()
-        result: list[dict[str, object]] = []
-        for row in rows:
-            expected = int(row["expected"])
-            evaluated = int(row["evaluated"])
-            correct = int(row["correct"])
-            result.append(
-                {
-                    "id": str(row["id"]),
-                    "shortId": str(row["id"])[:8],
-                    "datasetId": str(row["dataset_id"]),
-                    "datasetName": str(row["dataset_name"]),
-                    "trainerId": str(row["trainer_id"]),
-                    "runtimePackId": str(row["runtime_pack_id"]),
-                    "createdAt": str(row["created_at"]),
-                    "modelDigest": str(row["model_artifact_digest"] or ""),
-                    "expected": expected,
-                    "evaluated": evaluated,
-                    "complete": expected > 0 and evaluated == expected,
-                    "accuracy": correct / evaluated if evaluated else 0.0,
-                    "failures": int(row["failures"]),
-                    "vetoFailures": int(row["vetoes"]),
-                    "meanLatencyMs": float(row["mean_latency"]),
-                }
-            )
-        return result
+        return self._load_comparison_rows()
 
     @Property(dict, notify=changed)
     def selectedExperiment(self) -> dict[str, object]:
         if not self._selected_experiment_id:
             return {}
-        for row in self._comparison_rows():
+        for row in self._load_comparison_rows():
             if row["id"] == self._selected_experiment_id:
                 return row
         return {}
@@ -261,19 +203,11 @@ class CompareController(QObject):
 
     @Property(bool, notify=changed)
     def evaluatorAvailable(self) -> bool:
-        record = self._selected_record()
-        return self._has_packaged_evaluator(record)
+        return self._has_packaged_evaluator(self._selected_record())
 
     @Property(bool, notify=changed)
     def canRunEvaluation(self) -> bool:
-        if self._busy or not self._workspace:
-            return False
-        record = self._selected_record()
-        if not self._has_packaged_evaluator(record):
-            return False
-        assert record is not None
-        progress = EvaluationService(self._workspace).progress(record.id, self._split)
-        return progress.expected > 0 and not progress.complete
+        return self._can_run_evaluation()
 
     @Property(str, notify=changed)
     def evaluatorMessage(self) -> str:
@@ -366,7 +300,7 @@ class CompareController(QObject):
 
     @Slot()
     def runSelectedEvaluation(self) -> None:
-        if not self._workspace or not self.canRunEvaluation:
+        if not self._workspace or not self._can_run_evaluation():
             return
         record = self._selected_record()
         if record is None:
@@ -457,8 +391,70 @@ class CompareController(QObject):
             and record.model_artifact_digest
         )
 
-    def _comparison_rows(self) -> list[dict[str, object]]:
-        return self.comparisonRows
+    def _can_run_evaluation(self) -> bool:
+        if self._busy or not self._workspace:
+            return False
+        record = self._selected_record()
+        if not self._has_packaged_evaluator(record):
+            return False
+        assert record is not None
+        progress = EvaluationService(self._workspace).progress(record.id, self._split)
+        return progress.expected > 0 and not progress.complete
+
+    def _load_comparison_rows(self) -> list[dict[str, object]]:
+        if not self._workspace or not self._project_id:
+            return []
+        with self._workspace.database.connection() as conn:
+            rows = conn.execute(
+                "SELECT e.id,e.dataset_id,e.trainer_id,e.runtime_pack_id,e.created_at,"
+                "e.model_artifact_digest,d.name AS dataset_name,"
+                "COALESCE(dp.example_count,0) AS expected,COUNT(ec.id) AS evaluated,"
+                "COALESCE(SUM(ec.correct),0) AS correct,COUNT(f.id) AS failures,"
+                "COALESCE(SUM(CASE WHEN f.severity='VETO' THEN 1 ELSE 0 END),0) AS vetoes,"
+                "COALESCE(AVG(ec.latency_ms),0) AS mean_latency "
+                "FROM experiments e "
+                "JOIN dataset_versions d ON d.id=e.dataset_id "
+                "LEFT JOIN dataset_partitions dp "
+                "ON dp.dataset_id=e.dataset_id AND dp.split=? "
+                "LEFT JOIN evaluation_cases ec "
+                "ON ec.experiment_id=e.id AND ec.split=? "
+                "LEFT JOIN failures f ON f.id=ec.failure_id "
+                "WHERE e.project_id=? AND e.status=? "
+                "GROUP BY e.id,e.dataset_id,e.trainer_id,e.runtime_pack_id,e.created_at,"
+                "e.model_artifact_digest,d.name,dp.example_count "
+                "ORDER BY e.created_at DESC LIMIT 200",
+                (
+                    self._split.value,
+                    self._split.value,
+                    self._project_id,
+                    ExperimentStatus.COMPLETED.value,
+                ),
+            ).fetchall()
+        result: list[dict[str, object]] = []
+        for row in rows:
+            expected = int(row["expected"])
+            evaluated = int(row["evaluated"])
+            correct = int(row["correct"])
+            result.append(
+                {
+                    "id": str(row["id"]),
+                    "shortId": str(row["id"])[:8],
+                    "datasetId": str(row["dataset_id"]),
+                    "datasetName": str(row["dataset_name"]),
+                    "trainerId": str(row["trainer_id"]),
+                    "runtimePackId": str(row["runtime_pack_id"]),
+                    "createdAt": str(row["created_at"]),
+                    "modelDigest": str(row["model_artifact_digest"] or ""),
+                    "expected": expected,
+                    "evaluated": evaluated,
+                    "complete": expected > 0 and evaluated == expected,
+                    "accuracy": correct / evaluated if evaluated else 0.0,
+                    "failures": int(row["failures"]),
+                    "vetoFailures": int(row["vetoes"]),
+                    "meanLatencyMs": float(row["mean_latency"]),
+                }
+            )
+        return result
 
     def _case_total(self) -> int:
         if not self._workspace or not self._selected_experiment_id:

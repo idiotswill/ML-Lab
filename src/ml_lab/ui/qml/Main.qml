@@ -187,7 +187,7 @@ ApplicationWindow {
                                 required property int index
 
                                 Layout.fillWidth: true
-                                implicitHeight: 42
+                                implicitHeight: 38
                                 text: modelData
                                 checkable: true
                                 checked: window.currentPage === index

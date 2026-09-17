@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from ml_lab.core.models import DatasetSplit, ExperimentStatus
 from ml_lab.evaluation.generic import make_sparse_classification_evaluator
@@ -16,6 +16,7 @@ def evaluate_generic_sparse_experiment(
     experiment_id: str,
     *,
     splits: Sequence[DatasetSplit] = (DatasetSplit.TEST, DatasetSplit.REDTEAM),
+    cancelled: Callable[[], bool] | None = None,
 ) -> tuple[EvaluationSummary, ...]:
     """Evaluate a completed generic sparse model on protected frozen partitions.
 
@@ -50,11 +51,20 @@ def evaluate_generic_sparse_experiment(
         seen.add(split)
         if partitions.get(split, 0) <= 0:
             continue
+        if cancelled is not None and cancelled():
+            raise InterruptedError("Evaluation cancellation requested")
         progress = service.progress(experiment.id, split)
         if progress.complete:
             summaries.append(service.summary(experiment.id, split))
             continue
-        summaries.append(service.evaluate_partition(experiment.id, split, evaluator))
+        summaries.append(
+            service.evaluate_partition(
+                experiment.id,
+                split,
+                evaluator,
+                cancelled=cancelled,
+            )
+        )
     if not summaries:
         raise RuntimeError("Dataset has no protected TEST/REDTEAM examples to evaluate.")
     return tuple(summaries)

@@ -1,3 +1,9 @@
+from ml_lab.evaluation.phase_a import (
+    PhaseAPredictor,
+    PhaseAReferenceCheck,
+    make_phase_a_case_evaluator,
+    make_phase_a_sparse_evaluator,
+)
 from ml_lab.evaluation.service import (
     CaseOutcome,
     EvaluationCaseRecord,
@@ -10,4 +16,8 @@ __all__ = [
     "EvaluationCaseRecord",
     "EvaluationService",
     "EvaluationSummary",
+    "PhaseAPredictor",
+    "PhaseAReferenceCheck",
+    "make_phase_a_case_evaluator",
+    "make_phase_a_sparse_evaluator",
 ]

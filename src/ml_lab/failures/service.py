@@ -19,6 +19,8 @@ from ml_lab.storage.workspace import Workspace
 
 @dataclass(frozen=True, slots=True)
 class FailurePageEntry:
+    """A failure row decorated with regression membership from the same page query."""
+
     failure: FailureRecord
     is_regression: bool
 

@@ -211,7 +211,10 @@ def run_local_provider_child(spec_path: Path) -> int:
         receipt_path = Path(_required_text(spec, "receipt_path")).resolve()
         model = _required_text(spec, "model")
         endpoint = validate_loopback_endpoint(_required_text(spec, "endpoint"))
-        timeout_seconds = float(spec.get("timeout_seconds", 120.0))
+        raw_timeout = spec.get("timeout_seconds", 120.0)
+        if isinstance(raw_timeout, bool) or not isinstance(raw_timeout, (int, float)):
+            raise ValueError("timeout_seconds must be numeric")
+        timeout_seconds = max(1.0, min(float(raw_timeout), 900.0))
         request = _read_json_value(request_path)
         request_sha = _sha256_json(request)
     except Exception as exc:

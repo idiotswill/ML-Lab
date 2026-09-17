@@ -115,15 +115,23 @@ class FailureService:
         offset: int = 0,
         limit: int = 100,
     ) -> list[FailureRecord]:
-        return [
-            entry.failure
-            for entry in self.page_entries_for_project(
-                project_id,
-                severity=severity,
-                offset=offset,
-                limit=limit,
-            )
-        ]
+        if offset < 0:
+            raise ValueError("offset must be >= 0")
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        where = "project_id=?"
+        params: list[object] = [project_id]
+        if severity is not None:
+            where += " AND severity=?"
+            params.append(severity.value)
+        params.extend((limit, offset))
+        with self.database.connection() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM failures WHERE {where} "
+                "ORDER BY created_at DESC,id LIMIT ? OFFSET ?",
+                tuple(params),
+            ).fetchall()
+        return [_failure_from_row(row) for row in rows]
 
     def page_entries_for_project(
         self,
@@ -174,16 +182,27 @@ class FailureService:
         regression_only: bool = False,
         suite_name: str = "default",
     ) -> int:
+        if not regression_only:
+            where = "project_id=?"
+            params: list[object] = [project_id]
+            if severity is not None:
+                where += " AND severity=?"
+                params.append(severity.value)
+            with self.database.connection() as conn:
+                row = conn.execute(
+                    f"SELECT COUNT(*) FROM failures WHERE {where}",
+                    tuple(params),
+                ).fetchone()
+            return int(row[0]) if row else 0
+
         clean_suite = suite_name.strip()
         if not clean_suite:
             raise ValueError("Regression suite name is required.")
-        where = "f.project_id=?"
-        params: list[object] = [clean_suite, project_id]
+        where = "f.project_id=? AND r.failure_id IS NOT NULL"
+        params = [clean_suite, project_id]
         if severity is not None:
             where += " AND f.severity=?"
             params.append(severity.value)
-        if regression_only:
-            where += " AND r.failure_id IS NOT NULL"
         with self.database.connection() as conn:
             row = conn.execute(
                 "SELECT COUNT(*) FROM failures f LEFT JOIN regression_cases r "

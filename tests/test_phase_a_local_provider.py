@@ -21,7 +21,12 @@ from ml_lab.baselines.phase_a_provider import (
     run_phase_a_local_provider_baseline,
 )
 from ml_lab.contracts.snapshot import ContractFileSpec, ContractSnapshotService
-from ml_lab.core.models import DatasetSplit, ExperimentStatus, FailureSeverity
+from ml_lab.core.models import (
+    ContractSnapshot,
+    DatasetSplit,
+    ExperimentStatus,
+    FailureSeverity,
+)
 from ml_lab.datasets.service import DatasetService, ValidatedExampleInput
 from ml_lab.evaluation.service import EvaluationService
 from ml_lab.experiments.service import ExperimentService
@@ -100,7 +105,9 @@ class LocalChatCompletionsTurnProvider:
         if self.model == "touch-network":
             socket.create_connection(("example.com", 80), timeout=0.01)
         family = request.allowed_action_families[0]
-        family_spec = next(item for item in request.family_slots if item["family"] == family)
+        family_spec = next(
+            item for item in request.family_slots if item["family"] == family
+        )
         slots = []
         for slot in family_spec["slots"]:
             if slot.get("required", True) is False:
@@ -220,7 +227,7 @@ def _snapshot(
     project_id: str,
     repo: Path,
     commit: str,
-):
+) -> ContractSnapshot:
     root = "frankenhomie-asterra-v0.9.0/asterra"
     return ContractSnapshotService(workspace).capture(
         project_id=project_id,
@@ -343,13 +350,16 @@ def test_provider_runner_uses_committed_bytes_and_persists_sandbox_receipt(
     residual_path = (
         repo / "frankenhomie-asterra-v0.9.0" / "asterra" / "semantic_residual.py"
     )
-    residual_path.write_text("raise RuntimeError('dirty bytes must not execute')\n", encoding="utf-8")
+    dirty_source = "raise RuntimeError('dirty bytes must not execute')\n"
+    residual_path.write_text(dirty_source, encoding="utf-8")
 
     result = runner.propose(_request(declaration="I smash Mara with the hammer now."))
     assert result.proposal["decision"] == "RESOLVE"
     assert result.proposal["action_family"] == "HARM_TARGET"
     receipt = json.loads(
-        workspace.artifacts.resolve(result.receipt_artifact_digest).read_text(encoding="utf-8")
+        workspace.artifacts.resolve(result.receipt_artifact_digest).read_text(
+            encoding="utf-8"
+        )
     )
     assert receipt["status"] == "PROPOSED"
     assert receipt["commit_sha"] == commit
@@ -388,7 +398,9 @@ def test_provider_runner_fails_closed_on_forbidden_authority(
     assert captured.value.error_code == error_code
     digest = captured.value.receipt_artifact_digest
     assert digest is not None
-    receipt = json.loads(workspace.artifacts.resolve(digest).read_text(encoding="utf-8"))
+    receipt = json.loads(
+        workspace.artifacts.resolve(digest).read_text(encoding="utf-8")
+    )
     assert receipt["status"] == "ERROR"
     assert receipt["error_code"] == error_code
     assert receipt["database_access_allowed"] is False
@@ -431,7 +443,9 @@ def test_local_provider_baseline_is_same_dataset_and_persists_provider_receipts(
         observed = json.loads(cases[0].observed_json)
         provider = observed["provider"]
         digest = provider["receipt_artifact_digest"]
-        receipt = json.loads(workspace.artifacts.resolve(digest).read_text(encoding="utf-8"))
+        receipt = json.loads(
+            workspace.artifacts.resolve(digest).read_text(encoding="utf-8")
+        )
         assert receipt["status"] == "PROPOSED"
         assert receipt["commit_sha"] == commit
         assert receipt["network_policy"] == "LOOPBACK_HTTP_ONLY"
@@ -498,6 +512,39 @@ def test_local_provider_baseline_identity_changes_with_configuration() -> None:
         endpoint="http://127.0.0.1:11434/v1/chat/completions",
         timeout_seconds=60,
     )
+
+
+def test_same_provider_configuration_preserves_each_manual_rerun(tmp_path: Path) -> None:
+    repo, commit = _fake_repo(tmp_path)
+    workspace = Workspace.create(tmp_path / "workspace")
+    project = workspace.create_project("Phase A", adapter_id=PHASE_A_ADAPTER_ID)
+    snapshot = _snapshot(workspace, project.id, repo, commit)
+    dataset_id = _frozen_dataset(
+        workspace,
+        project.id,
+        snapshot.id,
+        include_redteam=False,
+    )
+    common = {
+        "project_id": project.id,
+        "dataset_id": dataset_id,
+        "contract_snapshot_id": snapshot.id,
+        "model": "fixture",
+        "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+        "timeout_seconds": 5.0,
+    }
+    first = run_phase_a_local_provider_baseline(workspace, **common)
+    second = run_phase_a_local_provider_baseline(workspace, **common)
+    assert first.experiment.id != second.experiment.id
+    assert first.experiment.trainer_id == second.experiment.trainer_id
+    assert EvaluationService(workspace).case_count(
+        first.experiment.id,
+        DatasetSplit.TEST,
+    ) == 1
+    assert EvaluationService(workspace).case_count(
+        second.experiment.id,
+        DatasetSplit.TEST,
+    ) == 1
 
 
 def test_provider_experiment_remains_an_ordinary_immutable_baseline(tmp_path: Path) -> None:

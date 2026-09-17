@@ -12,7 +12,7 @@ from ml_lab.contracts.snapshot import ContractSnapshotService
 from ml_lab.core.models import DatasetSplit, ExperimentStatus
 from ml_lab.evaluation.generic import make_sparse_classification_evaluator
 from ml_lab.evaluation.phase_a import make_phase_a_sparse_evaluator
-from ml_lab.evaluation.service import EvaluationService, EvaluationSummary
+from ml_lab.evaluation.service import CaseEvaluator, EvaluationService, EvaluationSummary
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.storage.workspace import Workspace
 from ml_lab.trainers.phase_a_sparse import PhaseASparseModel
@@ -23,6 +23,31 @@ from ml_lab.trainers.service import (
     SPARSE_TRAINER_ID,
 )
 from ml_lab.trainers.sparse_nb import SparseNBModel
+
+
+def evaluate_packaged_experiment(
+    workspace: Workspace,
+    experiment_id: str,
+    *,
+    splits: Sequence[DatasetSplit] = (DatasetSplit.TEST, DatasetSplit.REDTEAM),
+    cancelled: Callable[[], bool] | None = None,
+) -> tuple[EvaluationSummary, ...]:
+    experiment = ExperimentService(workspace).get(experiment_id)
+    if experiment.trainer_id == SPARSE_TRAINER_ID:
+        return evaluate_generic_sparse_experiment(
+            workspace,
+            experiment_id,
+            splits=splits,
+            cancelled=cancelled,
+        )
+    if experiment.trainer_id == PHASE_A_TRAINER_ID:
+        return evaluate_phase_a_sparse_experiment(
+            workspace,
+            experiment_id,
+            splits=splits,
+            cancelled=cancelled,
+        )
+    raise ValueError(f"No packaged evaluator for trainer {experiment.trainer_id!r}.")
 
 
 def evaluate_generic_sparse_experiment(
@@ -115,7 +140,7 @@ def _evaluate_protected_partitions(
     workspace: Workspace,
     experiment_id: str,
     dataset_id: str,
-    evaluator: Callable[..., object],
+    evaluator: CaseEvaluator,
     *,
     splits: Sequence[DatasetSplit],
     cancelled: Callable[[], bool] | None,
@@ -142,7 +167,7 @@ def _evaluate_protected_partitions(
             service.evaluate_partition(
                 experiment_id,
                 split,
-                evaluator,  # type: ignore[arg-type]
+                evaluator,
                 cancelled=cancelled,
             )
         )

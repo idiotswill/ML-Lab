@@ -58,7 +58,11 @@ def training_options(adapter_id: str) -> tuple[TrainingOption, ...]:
     intentionally absent. The UI must never imply that an experimental Python class is
     a runnable trainer merely because it exists in the source tree.
     """
-    return tuple(option for option in _BUILTIN_TRAINING_OPTIONS if adapter_id in option.adapter_ids)
+    return tuple(
+        option
+        for option in _BUILTIN_TRAINING_OPTIONS
+        if adapter_id in option.adapter_ids
+    )
 
 
 class TrainingService:
@@ -116,7 +120,10 @@ class TrainingService:
             "experiment_id": experiment.id,
             "text_key": str(config.get("text_key", "text")),
             "label_key": str(config.get("label_key", "class")),
-            "feature_dim": _positive_int(config.get("feature_dim", 32768), "feature_dim"),
+            "feature_dim": _positive_int(
+                config.get("feature_dim", 32768),
+                "feature_dim",
+            ),
             "alpha": _positive_float(config.get("alpha", 0.5), "alpha"),
         }
 
@@ -153,7 +160,19 @@ class TrainingService:
             return TrainingState(experiment, job)
 
         if job.status is JobStatus.COMPLETED:
-            completed = self._complete_from_job(experiment, job)
+            try:
+                completed = self._complete_from_job(experiment, job)
+            except Exception:
+                current = self.experiments.get(experiment.id)
+                if current.status is ExperimentStatus.RUNNING:
+                    try:
+                        self.experiments.finish_without_success(
+                            experiment.id,
+                            ExperimentStatus.FAILED,
+                        )
+                    except RuntimeError:
+                        pass
+                raise
             return TrainingState(completed, job)
         status = {
             JobStatus.FAILED: ExperimentStatus.FAILED,

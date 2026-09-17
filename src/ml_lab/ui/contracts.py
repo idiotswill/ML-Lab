@@ -119,7 +119,7 @@ class ContractSnapshotsController(QObject):
 
     @Property(str, notify=changed)
     def captureMessage(self) -> str:
-        if not self.hasProject:
+        if self._workspace is None or not self._project_id:
             return "Select a project first."
         try:
             descriptor = contract_capture_descriptor_for(self._adapter_id)

@@ -11,6 +11,10 @@ Item {
     readonly property var selected: lab.selectedExperiment
     readonly property var selectedJob: lab.selectedJob
     readonly property var metrics: lab.selectedMetrics
+    readonly property bool trainerUsesPayloadKeys:
+        trainerBox.currentIndex >= 0 &&
+        trainerBox.currentIndex < lab.trainerOptions.length &&
+        Boolean(lab.trainerOptions[trainerBox.currentIndex].usesPayloadKeys)
 
     function statusTone(status) {
         if (status === "COMPLETED")
@@ -404,6 +408,7 @@ Item {
                                 }
 
                                 Text {
+                                    visible: root.trainerUsesPayloadKeys
                                     text: "Payload key"
                                     color: Theme.muted
                                     font.pixelSize: 10
@@ -412,6 +417,7 @@ Item {
 
                                 TextField {
                                     id: textKeyField
+                                    visible: root.trainerUsesPayloadKeys
                                     Layout.fillWidth: true
                                     text: "text"
                                     activeFocusOnTab: true
@@ -419,6 +425,7 @@ Item {
                                 }
 
                                 Text {
+                                    visible: root.trainerUsesPayloadKeys
                                     text: "Label key"
                                     color: Theme.muted
                                     font.pixelSize: 10
@@ -427,11 +434,21 @@ Item {
 
                                 TextField {
                                     id: labelKeyField
+                                    visible: root.trainerUsesPayloadKeys
                                     Layout.fillWidth: true
                                     text: "class"
                                     activeFocusOnTab: true
                                     Accessible.name: "Label key"
                                 }
+                            }
+
+                            Text {
+                                visible: lab.hasRunnableTrainer && !root.trainerUsesPayloadKeys
+                                Layout.fillWidth: true
+                                text: "This trainer consumes the adapter-validated bounded request/label contract directly; freeform payload and label keys are not configurable."
+                                color: Theme.dim
+                                font.pixelSize: 10
+                                wrapMode: Text.WordWrap
                             }
 
                             RowLayout {

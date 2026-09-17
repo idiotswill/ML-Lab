@@ -5,7 +5,7 @@ from collections.abc import Callable, Mapping, Sequence
 from ml_lab.adapters.phase_a import PhaseAResidualAdapter
 from ml_lab.adapters.phase_a_reference import ReferenceValidationReceipt
 from ml_lab.core.models import FailureSeverity
-from ml_lab.evaluation.service import CaseOutcome, CaseEvaluator
+from ml_lab.evaluation.service import CaseEvaluator, CaseOutcome
 from ml_lab.trainers.phase_a_sparse import (
     BoundedPredictionError,
     PhaseASparseModel,

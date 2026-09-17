@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from dataclasses import dataclass
 
 from ml_lab.core.models import (
@@ -165,13 +166,11 @@ class TrainingService:
             except Exception:
                 current = self.experiments.get(experiment.id)
                 if current.status is ExperimentStatus.RUNNING:
-                    try:
+                    with suppress(RuntimeError):
                         self.experiments.finish_without_success(
                             experiment.id,
                             ExperimentStatus.FAILED,
                         )
-                    except RuntimeError:
-                        pass
                 raise
             return TrainingState(completed, job)
         status = {

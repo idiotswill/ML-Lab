@@ -11,7 +11,10 @@ from ml_lab.adapters.phase_a_provider import (
     PhaseALocalProviderRunner,
     validate_loopback_endpoint,
 )
-from ml_lab.adapters.phase_a_reference import PhaseAReferenceValidator
+from ml_lab.adapters.phase_a_reference import (
+    PhaseAReferenceValidator,
+    ReferenceValidationReceipt,
+)
 from ml_lab.baselines.service import BaselineRunResult, BaselineService
 from ml_lab.contracts.snapshot import ContractSnapshotService
 from ml_lab.core.models import DatasetSplit, ExperimentStatus, FailureSeverity
@@ -164,7 +167,10 @@ def completed_local_provider_baseline(
 def _provider_evaluator(
     runner: PhaseALocalProviderRunner,
     *,
-    reference_check: Callable[[Mapping[str, object], Mapping[str, object]], object],
+    reference_check: Callable[
+        [Mapping[str, object], Mapping[str, object]],
+        ReferenceValidationReceipt,
+    ],
 ) -> CaseEvaluator:
     last_provider: dict[str, object] = {}
 
@@ -184,7 +190,7 @@ def _provider_evaluator(
 
     base = make_phase_a_case_evaluator(
         predictor=predict,
-        reference_check=reference_check,  # type: ignore[arg-type]
+        reference_check=reference_check,
     )
 
     def evaluate(row: Mapping[str, object]) -> CaseOutcome:

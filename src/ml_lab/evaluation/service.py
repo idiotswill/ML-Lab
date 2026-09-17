@@ -54,6 +54,18 @@ class EvaluationSummary:
         return self.correct / self.total if self.total else 0.0
 
 
+@dataclass(frozen=True, slots=True)
+class EvaluationProgress:
+    experiment_id: str
+    split: DatasetSplit
+    expected: int
+    evaluated: int
+
+    @property
+    def complete(self) -> bool:
+        return self.expected > 0 and self.evaluated == self.expected
+
+
 CaseEvaluator = Callable[[Mapping[str, object]], CaseOutcome]
 
 
@@ -79,19 +91,24 @@ class EvaluationService:
         evaluator: CaseEvaluator,
     ) -> EvaluationSummary:
         experiment = self.experiments.get(experiment_id)
-        existing = self._case_count(experiment_id, split)
-        if existing:
+        progress = self.progress(experiment_id, split)
+        if progress.expected <= 0:
+            raise ValueError(f"{split.value} partition contains no evaluation examples.")
+        if progress.complete:
             raise RuntimeError(
-                f"Evaluation is immutable: {existing} {split.value} case(s) already exist."
+                f"Evaluation is immutable: all {progress.expected} {split.value} case(s) "
+                "already exist."
             )
+
         handles = self.datasets.evaluation_partition_handles(experiment.dataset_id)
         try:
             digest = handles[split.value]
         except KeyError as exc:
             raise RuntimeError(f"Frozen dataset is missing {split.value} partition.") from exc
         path = self.artifacts.resolve(digest)
+        existing_ids = self._case_ids(experiment_id, split)
+        source_ids: set[str] = set()
 
-        inserted = 0
         with path.open("r", encoding="utf-8") as handle:
             for line_number, raw_line in enumerate(handle, start=1):
                 if not raw_line.strip():
@@ -110,6 +127,13 @@ class EvaluationService:
                     raise ValueError(
                         f"{path.name}:{line_number}: example_id must be a non-empty string"
                     )
+                if example_id in source_ids:
+                    raise ValueError(
+                        f"{path.name}:{line_number}: duplicate example_id {example_id!r}"
+                    )
+                source_ids.add(example_id)
+                if example_id in existing_ids:
+                    continue
 
                 started = time.perf_counter()
                 outcome = evaluator(row)
@@ -137,23 +161,64 @@ class EvaluationService:
                     latency_ms=latency_ms,
                     failure_id=failure_id,
                 )
-                inserted += 1
 
-        if inserted == 0:
-            raise ValueError(f"{split.value} partition contains no evaluation examples.")
+        finished = self.progress(experiment_id, split)
+        if not finished.complete:
+            raise RuntimeError(
+                f"Evaluation evidence is incomplete for {split.value}: "
+                f"{finished.evaluated}/{finished.expected} case(s)."
+            )
         return self.summary(experiment_id, split)
+
+    def progress(self, experiment_id: str, split: DatasetSplit) -> EvaluationProgress:
+        experiment = self.experiments.get(experiment_id)
+        partition = next(
+            (
+                item
+                for item in self.datasets.partitions(experiment.dataset_id)
+                if item.split is split
+            ),
+            None,
+        )
+        expected = partition.example_count if partition is not None else 0
+        evaluated = self.case_count(experiment_id, split)
+        if evaluated > expected:
+            raise RuntimeError(
+                f"Evaluation evidence exceeds frozen {split.value} partition: "
+                f"{evaluated}>{expected}."
+            )
+        return EvaluationProgress(
+            experiment_id=experiment_id,
+            split=split,
+            expected=expected,
+            evaluated=evaluated,
+        )
 
     def summary(self, experiment_id: str, split: DatasetSplit) -> EvaluationSummary:
         with self.database.connection() as conn:
-            rows = conn.execute(
-                "SELECT ec.correct,ec.latency_ms,f.severity "
+            row = conn.execute(
+                "SELECT COUNT(*) AS total,COALESCE(SUM(ec.correct),0) AS correct,"
+                "COUNT(f.id) AS failures,"
+                "COALESCE(SUM(CASE WHEN f.severity=? THEN 1 ELSE 0 END),0) AS vetoes,"
+                "COALESCE(AVG(ec.latency_ms),0) AS mean_latency "
                 "FROM evaluation_cases ec "
                 "LEFT JOIN failures f ON f.id=ec.failure_id "
-                "WHERE ec.experiment_id=? AND ec.split=? "
-                "ORDER BY ec.example_id",
-                (experiment_id, split.value),
-            ).fetchall()
-        if not rows:
+                "WHERE ec.experiment_id=? AND ec.split=?",
+                (FailureSeverity.VETO.value, experiment_id, split.value),
+            ).fetchone()
+            total = int(row["total"]) if row is not None else 0
+            p95_latency_ms = 0.0
+            if total:
+                rank = max(1, math.ceil(0.95 * total))
+                latency_row = conn.execute(
+                    "SELECT latency_ms FROM evaluation_cases "
+                    "WHERE experiment_id=? AND split=? "
+                    "ORDER BY latency_ms LIMIT 1 OFFSET ?",
+                    (experiment_id, split.value, rank - 1),
+                ).fetchone()
+                if latency_row is not None:
+                    p95_latency_ms = float(latency_row["latency_ms"])
+        if row is None or total == 0:
             return EvaluationSummary(
                 experiment_id=experiment_id,
                 split=split,
@@ -164,19 +229,15 @@ class EvaluationService:
                 mean_latency_ms=0.0,
                 p95_latency_ms=0.0,
             )
-        latencies = sorted(float(row["latency_ms"]) for row in rows)
-        failure_rows = [row for row in rows if row["severity"] is not None]
         return EvaluationSummary(
             experiment_id=experiment_id,
             split=split,
-            total=len(rows),
-            correct=sum(bool(row["correct"]) for row in rows),
-            failures=len(failure_rows),
-            veto_failures=sum(
-                row["severity"] == FailureSeverity.VETO.value for row in failure_rows
-            ),
-            mean_latency_ms=sum(latencies) / len(latencies),
-            p95_latency_ms=_percentile_nearest_rank(latencies, 0.95),
+            total=total,
+            correct=int(row["correct"]),
+            failures=int(row["failures"]),
+            veto_failures=int(row["vetoes"]),
+            mean_latency_ms=float(row["mean_latency"]),
+            p95_latency_ms=p95_latency_ms,
         )
 
     def compare(
@@ -211,13 +272,30 @@ class EvaluationService:
             ).fetchall()
         return [_case_from_row(row) for row in rows]
 
-    def _case_count(self, experiment_id: str, split: DatasetSplit) -> int:
+    def case_count(
+        self,
+        experiment_id: str,
+        split: DatasetSplit,
+        *,
+        only_incorrect: bool = False,
+    ) -> int:
+        incorrect_clause = " AND correct=0" if only_incorrect else ""
         with self.database.connection() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) FROM evaluation_cases WHERE experiment_id=? AND split=?",
+                "SELECT COUNT(*) FROM evaluation_cases "
+                "WHERE experiment_id=? AND split=?" + incorrect_clause,
                 (experiment_id, split.value),
             ).fetchone()
         return int(row[0]) if row else 0
+
+    def _case_ids(self, experiment_id: str, split: DatasetSplit) -> set[str]:
+        with self.database.connection() as conn:
+            rows = conn.execute(
+                "SELECT example_id FROM evaluation_cases "
+                "WHERE experiment_id=? AND split=?",
+                (experiment_id, split.value),
+            ).fetchall()
+        return {str(row["example_id"]) for row in rows}
 
     def _record_failure(
         self,
@@ -298,13 +376,6 @@ def _canonical_json(value: object) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
-
-
-def _percentile_nearest_rank(values: list[float], fraction: float) -> float:
-    if not values:
-        return 0.0
-    rank = max(1, math.ceil(fraction * len(values)))
-    return values[min(rank - 1, len(values) - 1)]
 
 
 def _case_from_row(row: sqlite3.Row) -> EvaluationCaseRecord:

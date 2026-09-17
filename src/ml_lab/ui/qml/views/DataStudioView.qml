@@ -12,6 +12,17 @@ Item {
     readonly property var selectedDataset: studio.selectedDataset
     readonly property var counts: studio.splitCounts
 
+    function createDatasetFromDialog() {
+        if (datasetName.text.trim().length === 0)
+            return
+        if (studio.requiresContractSnapshot && contractBox.currentIndex < 0)
+            return
+        const contractId = studio.requiresContractSnapshot ? String(contractBox.currentValue) : ""
+        studio.createDataset(datasetName.text, contractId)
+        createDialog.close()
+        datasetName.text = ""
+    }
+
     FileDialog {
         id: importDialog
         title: "Import JSON Lines dataset"
@@ -24,7 +35,7 @@ Item {
         id: createDialog
         modal: true
         anchors.centerIn: parent
-        width: 420
+        width: 460
         title: "Create dataset"
         standardButtons: Dialog.NoButton
 
@@ -50,13 +61,44 @@ Item {
                 placeholderText: "e.g. Residual semantics September"
                 activeFocusOnTab: true
                 selectByMouse: true
-                onAccepted: {
-                    if (text.trim().length > 0) {
-                        studio.createDataset(text)
-                        createDialog.close()
-                        text = ""
-                    }
-                }
+                onAccepted: root.createDatasetFromDialog()
+            }
+
+            Text {
+                visible: studio.requiresContractSnapshot
+                text: "Frozen contract snapshot"
+                color: Theme.text
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+            }
+
+            ComboBox {
+                id: contractBox
+                visible: studio.requiresContractSnapshot
+                Layout.fillWidth: true
+                model: studio.contractSnapshots
+                textRole: "name"
+                valueRole: "id"
+                activeFocusOnTab: true
+                Accessible.name: "Frozen contract snapshot"
+            }
+
+            Text {
+                visible: studio.requiresContractSnapshot && studio.contractSnapshots.length === 0
+                Layout.fillWidth: true
+                text: "This adapter requires a pinned contract. Capture one from Projects → Contract snapshots before creating the dataset."
+                color: Theme.warnText
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                visible: studio.requiresContractSnapshot && studio.contractSnapshots.length > 0
+                Layout.fillWidth: true
+                text: "The chosen snapshot is frozen into the dataset identity and carried into every experiment."
+                color: Theme.dim
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
             }
 
             RowLayout {
@@ -72,17 +114,18 @@ Item {
                 LabButton {
                     text: "Create"
                     primary: true
-                    enabled: datasetName.text.trim().length > 0
-                    onClicked: {
-                        studio.createDataset(datasetName.text)
-                        createDialog.close()
-                        datasetName.text = ""
-                    }
+                    enabled: datasetName.text.trim().length > 0 &&
+                             (!studio.requiresContractSnapshot || contractBox.currentIndex >= 0)
+                    onClicked: root.createDatasetFromDialog()
                 }
             }
         }
 
-        onOpened: datasetName.forceActiveFocus()
+        onOpened: {
+            if (studio.requiresContractSnapshot && studio.contractSnapshots.length > 0)
+                contractBox.currentIndex = 0
+            datasetName.forceActiveFocus()
+        }
     }
 
     ColumnLayout {
@@ -307,6 +350,13 @@ Item {
                                               "Draft dataset · import and validate before freeze"
                                     color: Theme.muted
                                     font.pixelSize: 11
+                                }
+
+                                Text {
+                                    visible: !!root.selectedDataset.contract_snapshot_id
+                                    text: "Pinned contract " + String(root.selectedDataset.contract_snapshot_id || "").substring(0, 8)
+                                    color: Theme.dim
+                                    font.pixelSize: 10
                                 }
                             }
 

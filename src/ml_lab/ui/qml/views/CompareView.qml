@@ -183,6 +183,14 @@ Item {
             }
         }
 
+        PhaseASciencePanel {
+            visible: appController.compare.science.enabled
+            Layout.fillWidth: true
+            Layout.preferredHeight: visible ? implicitHeight : 0
+            compareController: appController.compare
+            scienceController: appController.compare.science
+        }
+
         SplitView {
             Layout.fillWidth: true
             Layout.fillHeight: true

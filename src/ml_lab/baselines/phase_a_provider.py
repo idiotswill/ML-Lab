@@ -4,6 +4,7 @@ import hashlib
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 from ml_lab.adapters.phase_a import PHASE_A_ADAPTER_ID, PHASE_A_CONTRACT_VERSION
 from ml_lab.adapters.phase_a_provider import (
@@ -78,10 +79,13 @@ def run_phase_a_local_provider_baseline(
         endpoint=endpoint,
         timeout_seconds=timeout_seconds,
     )
+    config_model = cast(str, config["model"])
+    config_endpoint = cast(str, config["endpoint"])
+    config_timeout = cast(float, config["timeout_seconds"])
     baseline_id = local_provider_baseline_id(
-        model=str(config["model"]),
-        endpoint=str(config["endpoint"]),
-        timeout_seconds=float(config["timeout_seconds"]),
+        model=config_model,
+        endpoint=config_endpoint,
+        timeout_seconds=config_timeout,
     )
     snapshots = ContractSnapshotService(workspace)
     snapshot = snapshots.get(contract_snapshot_id)
@@ -115,9 +119,9 @@ def run_phase_a_local_provider_baseline(
         workspace,
         repository=Path(snapshot.repo_path),
         ref=snapshot.commit_sha,
-        model=str(config["model"]),
-        endpoint=str(config["endpoint"]),
-        timeout_seconds=float(config["timeout_seconds"]),
+        model=config_model,
+        endpoint=config_endpoint,
+        timeout_seconds=config_timeout,
     )
     reference = PhaseAReferenceValidator(workspace)
     evaluator = _provider_evaluator(

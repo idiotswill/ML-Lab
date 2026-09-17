@@ -78,6 +78,7 @@ def summarize_phase_a_experiment(
         ).fetchall()
 
     total = len(rows)
+    has_evidence = total > 0
     emitted_resolve = 0
     expected_resolve = 0
     expected_ask = 0
@@ -131,62 +132,103 @@ def summarize_phase_a_experiment(
         model_path = workspace.artifacts.resolve(experiment.model_artifact_digest)
         model_size_mb = model_path.stat().st_size / (1024.0 * 1024.0)
 
+    no_evidence_note = "No protected evaluation evidence for this split"
     values: dict[str, tuple[float | None, str]] = {
         "resolution_precision": (
             correct_resolve / emitted_resolve if emitted_resolve else None,
-            f"{correct_resolve}/{emitted_resolve} emitted RESOLVE decisions were correct",
+            (
+                f"{correct_resolve}/{emitted_resolve} emitted RESOLVE decisions were correct"
+                if has_evidence
+                else no_evidence_note
+            ),
         ),
         "useful_resolution_coverage": (
-            correct_resolve / total if total else None,
-            f"{correct_resolve}/{total} protected cases resolved correctly",
+            correct_resolve / total if has_evidence else None,
+            (
+                f"{correct_resolve}/{total} protected cases resolved correctly"
+                if has_evidence
+                else no_evidence_note
+            ),
         ),
         "ask_player_accuracy": (
             correct_ask / expected_ask if expected_ask else None,
-            f"{correct_ask}/{expected_ask} expected ASK_PLAYER cases were exact",
+            (
+                f"{correct_ask}/{expected_ask} expected ASK_PLAYER cases were exact"
+                if has_evidence
+                else no_evidence_note
+            ),
         ),
         "decision_accuracy": (
-            decision_matches / total if total else None,
-            f"{decision_matches}/{total} decisions matched",
+            decision_matches / total if has_evidence else None,
+            (
+                f"{decision_matches}/{total} decisions matched"
+                if has_evidence
+                else no_evidence_note
+            ),
         ),
         "family_slot_accuracy": (
             family_slot_matches / expected_resolve if expected_resolve else None,
             (
                 f"{family_slot_matches}/{expected_resolve} expected RESOLVE cases "
                 "matched family + slots"
+                if has_evidence
+                else no_evidence_note
             ),
         ),
         "false_commitments": (
-            float(false_commitments),
-            "Veto: any unsafe or semantically wrong committed RESOLVE",
+            float(false_commitments) if has_evidence else None,
+            (
+                "Veto: any unsafe or semantically wrong committed RESOLVE"
+                if has_evidence
+                else no_evidence_note
+            ),
         ),
         "contract_failures": (
-            float(contract_failures),
-            "Veto: proposal rejected by adapter/reference contract",
+            float(contract_failures) if has_evidence else None,
+            (
+                "Veto: proposal rejected by adapter/reference contract"
+                if has_evidence
+                else no_evidence_note
+            ),
         ),
         "zero_model_route_violations": (
             None,
             "Not measured inside the residual-only Lab dataset",
         ),
         "hidden_or_out_of_envelope": (
-            float(envelope_failures),
-            "Veto: hidden/fact/family/slot envelope escape",
+            float(envelope_failures) if has_evidence else None,
+            (
+                "Veto: hidden/fact/family/slot envelope escape"
+                if has_evidence
+                else no_evidence_note
+            ),
         ),
         "adversarial_failures": (
-            float(incorrect) if split is DatasetSplit.REDTEAM else None,
+            float(incorrect) if split is DatasetSplit.REDTEAM and has_evidence else None,
             (
                 "Incorrect REDTEAM cases"
+                if split is DatasetSplit.REDTEAM and has_evidence
+                else no_evidence_note
                 if split is DatasetSplit.REDTEAM
                 else "Measured on REDTEAM only"
             ),
         ),
         "latency_ms": (
-            latency_total / total if total else None,
-            "Mean persisted case latency, including reference validation",
+            latency_total / total if has_evidence else None,
+            (
+                "Mean persisted case latency, including reference validation"
+                if has_evidence
+                else no_evidence_note
+            ),
         ),
         "ram_mb": (None, "Runtime RAM measurement is not recorded per evaluation"),
         "model_size_mb": (
             model_size_mb,
-            "Immutable model artifact size" if model_size_mb is not None else "No model artifact",
+            (
+                "Immutable model artifact size"
+                if model_size_mb is not None
+                else "No model artifact"
+            ),
         ),
     }
     return _ordered_metrics(values)
@@ -312,6 +354,7 @@ def load_pinned_provider_reference(
 
 
 def metric_rows_for_ui(metrics: tuple[PhaseAMetricValue, ...]) -> list[dict[str, object]]:
+    ordered = sorted(metrics, key=lambda item: (not item.veto, item.metric_id))
     return [
         {
             "metricId": item.metric_id,
@@ -324,7 +367,7 @@ def metric_rows_for_ui(metrics: tuple[PhaseAMetricValue, ...]) -> list[dict[str,
             "note": item.note,
             "percent": item.metric_id in _PERCENT_METRICS,
         }
-        for item in metrics
+        for item in ordered
     ]
 
 

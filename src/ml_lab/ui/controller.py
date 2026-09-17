@@ -24,6 +24,7 @@ from ml_lab.diagnostics.hardware import HardwareInfo, collect_hardware_info
 from ml_lab.extensions.catalog import ExtensionCatalog
 from ml_lab.services import LabServices, open_or_create_workspace
 from ml_lab.ui.data_studio import DataStudioController
+from ml_lab.ui.experiments import ExperimentsController
 
 LOGGER = logging.getLogger(__name__)
 
@@ -72,6 +73,9 @@ class AppController(QObject):
         self._data_studio = DataStudioController(self)
         self._data_studio.operationCompleted.connect(self.noticeRaised.emit)
         self._data_studio.operationFailed.connect(self.errorRaised.emit)
+        self._experiments = ExperimentsController(self)
+        self._experiments.operationCompleted.connect(self.noticeRaised.emit)
+        self._experiments.operationFailed.connect(self.errorRaised.emit)
         self._diagnostic_pool = QThreadPool(self)
         self._diagnostic_pool.setMaxThreadCount(1)
         self._diagnostics_loading = False
@@ -98,6 +102,10 @@ class AppController(QObject):
     @Property(QObject, constant=True)
     def dataStudio(self) -> QObject:
         return self._data_studio
+
+    @Property(QObject, constant=True)
+    def experiments(self) -> QObject:
+        return self._experiments
 
     @Property(list, notify=projectsChanged)
     def projects(self) -> list[dict[str, object]]:
@@ -184,7 +192,7 @@ class AppController(QObject):
         try:
             project = self._services.workspace.create_project(name, adapter_id, description)
             self._selected_project_id = project.id
-            self._bind_data_studio()
+            self._bind_project_tools()
             self.projectsChanged.emit()
             self.selectionChanged.emit()
             self.noticeRaised.emit(f"Created project {name.strip()}")
@@ -202,7 +210,7 @@ class AppController(QObject):
             self.errorRaised.emit("Project error", "The selected project no longer exists.")
             return
         self._selected_project_id = project_id
-        self._bind_data_studio()
+        self._bind_project_tools()
         self.selectionChanged.emit()
 
     @Slot(str)
@@ -214,6 +222,7 @@ class AppController(QObject):
             if self._selected_project_id == project_id:
                 self._selected_project_id = ""
                 self._data_studio.clear_project()
+                self._experiments.clear_project()
                 self.selectionChanged.emit()
             self.projectsChanged.emit()
             self.noticeRaised.emit("Project archived")
@@ -305,6 +314,7 @@ class AppController(QObject):
         self._services = services
         self._selected_project_id = ""
         self._data_studio.clear_project()
+        self._experiments.clear_project()
         self._catalog = ExtensionCatalog(services.workspace.root)
         self._catalog.load()
         self._diagnostics_loading = False
@@ -313,9 +323,10 @@ class AppController(QObject):
         self.extensionsChanged.emit()
         self.selectionChanged.emit()
 
-    def _bind_data_studio(self) -> None:
+    def _bind_project_tools(self) -> None:
         if not self._services or not self._selected_project_id:
             self._data_studio.clear_project()
+            self._experiments.clear_project()
             return
         project = next(
             (
@@ -327,11 +338,19 @@ class AppController(QObject):
         )
         if project is None:
             self._data_studio.clear_project()
+            self._experiments.clear_project()
             return
+        adapter_id = str(project["adapter_id"])
         self._data_studio.bind_project(
             self._services.workspace,
             self._selected_project_id,
-            str(project["adapter_id"]),
+            adapter_id,
+        )
+        self._experiments.bind_project(
+            self._services.workspace,
+            self._services.jobs,
+            self._selected_project_id,
+            adapter_id,
         )
 
     def _refresh_diagnostics(self) -> None:
@@ -397,6 +416,7 @@ class AppController(QObject):
 
     def _poll_jobs(self) -> None:
         if self._services:
+            self._experiments.refresh()
             self.jobsChanged.emit()
 
 

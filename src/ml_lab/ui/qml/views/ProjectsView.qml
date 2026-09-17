@@ -6,6 +6,10 @@ import "../components"
 Item {
     id: root
 
+    ContractSnapshotsDialog {
+        id: contractDialog
+    }
+
     Dialog {
         id: createDialog
         modal: true
@@ -260,6 +264,40 @@ Item {
                         text: appController.selectedProject.adapter_id || ""
                         color: Theme.text2
                         font.pixelSize: 13
+                        wrapMode: Text.WrapAnywhere
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: "Contract snapshots"
+                        color: Theme.dim
+                        font.pixelSize: 11
+                        Layout.topMargin: 4
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: String(appController.modelsRegistry.contractSnapshots.snapshotRows.length) +
+                                  " frozen"
+                            color: Theme.text2
+                            font.pixelSize: 12
+                        }
+
+                        StatusPill {
+                            text: appController.modelsRegistry.contractSnapshots.captureSupported ?
+                                  "DECLARED" : "UNDECLARED"
+                            tone: appController.modelsRegistry.contractSnapshots.captureSupported ?
+                                  "good" : "neutral"
+                        }
+                    }
+
+                    LabButton {
+                        text: "Contract snapshots"
+                        Layout.fillWidth: true
+                        onClicked: contractDialog.open()
                     }
 
                     Text {

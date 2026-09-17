@@ -66,6 +66,12 @@ ApplicationWindow {
         onActivated: window.currentPage = 5
     }
 
+    Shortcut {
+        sequence: "Ctrl+7"
+        enabled: appController.hasWorkspace
+        onActivated: window.currentPage = 6
+    }
+
     Connections {
         target: appController
 
@@ -198,6 +204,7 @@ ApplicationWindow {
                                 "Projects",
                                 "Data Studio",
                                 "Experiments",
+                                "Compare",
                                 "Jobs",
                                 "Diagnostics",
                                 "Settings"
@@ -274,6 +281,7 @@ ApplicationWindow {
                         ProjectsView {}
                         DataStudioView {}
                         ExperimentsView {}
+                        CompareView {}
                         JobsView {}
                         DiagnosticsView {}
                         SettingsView {}

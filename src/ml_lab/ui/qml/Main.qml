@@ -60,6 +60,12 @@ ApplicationWindow {
         onActivated: window.currentPage = 4
     }
 
+    Shortcut {
+        sequence: "Ctrl+6"
+        enabled: appController.hasWorkspace
+        onActivated: window.currentPage = 5
+    }
+
     Connections {
         target: appController
 
@@ -188,7 +194,14 @@ ApplicationWindow {
                         }
 
                         Repeater {
-                            model: ["Projects", "Data Studio", "Jobs", "Diagnostics", "Settings"]
+                            model: [
+                                "Projects",
+                                "Data Studio",
+                                "Experiments",
+                                "Jobs",
+                                "Diagnostics",
+                                "Settings"
+                            ]
 
                             delegate: Button {
                                 required property string modelData
@@ -260,6 +273,7 @@ ApplicationWindow {
 
                         ProjectsView {}
                         DataStudioView {}
+                        ExperimentsView {}
                         JobsView {}
                         DiagnosticsView {}
                         SettingsView {}

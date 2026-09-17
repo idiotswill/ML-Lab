@@ -38,7 +38,7 @@ def main() -> int:
         roots = engine.rootObjects()
         ok = bool(roots)
         if roots:
-            for page in (2, 3, 4, 5):
+            for page in (2, 3, 4, 5, 6):
                 roots[0].setProperty("currentPage", page)
                 app.processEvents()
 
@@ -50,6 +50,7 @@ def main() -> int:
                     "compare_page": 3,
                     "redteam_failures_page": 4,
                     "models_registry_page": 5,
+                    "package_verify_page": 6,
                     "qml": str(qml_path),
                 },
                 sort_keys=True,

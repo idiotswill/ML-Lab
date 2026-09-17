@@ -13,14 +13,15 @@ from ml_lab.storage.workspace import Workspace
 
 
 class _DatasetOperationSignals(QObject):
-    completed = Signal(str, str, object)
-    failed = Signal(str, str, str)
+    completed = Signal(int, str, str, object)
+    failed = Signal(int, str, str, str)
 
 
 class _DatasetOperation(QRunnable):
     def __init__(
         self,
         *,
+        context_token: int,
         workspace_root: Path,
         operation: str,
         dataset_id: str,
@@ -28,6 +29,7 @@ class _DatasetOperation(QRunnable):
         source: Path | None = None,
     ) -> None:
         super().__init__()
+        self.context_token = context_token
         self.workspace_root = workspace_root
         self.operation = operation
         self.dataset_id = dataset_id
@@ -47,12 +49,18 @@ class _DatasetOperation(QRunnable):
             )
         except Exception as exc:
             self.signals.failed.emit(
+                self.context_token,
                 self.operation,
                 self.dataset_id,
                 f"{type(exc).__name__}: {exc}",
             )
             return
-        self.signals.completed.emit(self.operation, self.dataset_id, result)
+        self.signals.completed.emit(
+            self.context_token,
+            self.operation,
+            self.dataset_id,
+            result,
+        )
 
 
 class DataStudioController(QObject):
@@ -71,24 +79,31 @@ class DataStudioController(QObject):
         self._page_size = 100
         self._busy = False
         self._busy_message = ""
+        self._context_token = 0
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(1)
 
     def bind_project(self, workspace: Workspace, project_id: str, adapter_id: str) -> None:
+        self._context_token += 1
         self._workspace = workspace
         self._project_id = project_id
         self._adapter_id = adapter_id
         self._selected_dataset_id = ""
         self._split_filter = "ALL"
         self._offset = 0
+        self._busy = False
+        self._busy_message = ""
         self.changed.emit()
 
     def clear_project(self) -> None:
+        self._context_token += 1
         self._project_id = ""
         self._adapter_id = "generic"
         self._selected_dataset_id = ""
         self._split_filter = "ALL"
         self._offset = 0
+        self._busy = False
+        self._busy_message = ""
         self.changed.emit()
 
     def shutdown(self) -> None:
@@ -218,7 +233,7 @@ class DataStudioController(QObject):
 
     @Slot()
     def nextPage(self) -> None:
-        if self.canNextPage:
+        if self._offset + self._page_size < self._filtered_total():
             self._offset += self._page_size
             self.changed.emit()
 
@@ -259,8 +274,16 @@ class DataStudioController(QObject):
         return item
 
     def _filtered_total(self) -> int:
-        counts = self.splitCounts
-        return int(counts.get(self._split_filter, 0))
+        if not self._workspace or not self._selected_dataset_id:
+            return 0
+        query = "SELECT COUNT(*) FROM dataset_examples WHERE dataset_id=?"
+        params: tuple[object, ...] = (self._selected_dataset_id,)
+        if self._split_filter != "ALL":
+            query += " AND split=?"
+            params = (self._selected_dataset_id, self._split_filter)
+        with self._workspace.database.connection() as conn:
+            row = conn.execute(query, params).fetchone()
+        return int(row[0]) if row else 0
 
     def _start_operation(
         self,
@@ -281,6 +304,7 @@ class DataStudioController(QObject):
         self._busy_message = "Importing dataset…" if operation == "import" else "Freezing dataset…"
         self.changed.emit()
         task = _DatasetOperation(
+            context_token=self._context_token,
             workspace_root=self._workspace.root,
             operation=operation,
             dataset_id=dataset_id,
@@ -291,13 +315,20 @@ class DataStudioController(QObject):
         task.signals.failed.connect(self._operation_failed)
         self._pool.start(task)
 
-    @Slot(str, str, object)
-    def _operation_completed(self, operation: str, dataset_id: str, result: object) -> None:
-        if dataset_id != self._selected_dataset_id:
+    @Slot(int, str, str, object)
+    def _operation_completed(
+        self,
+        context_token: int,
+        operation: str,
+        dataset_id: str,
+        result: object,
+    ) -> None:
+        if context_token != self._context_token:
             return
         self._busy = False
         self._busy_message = ""
-        self._offset = 0
+        if dataset_id == self._selected_dataset_id:
+            self._offset = 0
         self.changed.emit()
         details = result if isinstance(result, dict) else {}
         if operation == "import":
@@ -309,12 +340,20 @@ class DataStudioController(QObject):
         else:
             self.operationCompleted.emit("Dataset frozen with immutable split artifacts")
 
-    @Slot(str, str, str)
-    def _operation_failed(self, operation: str, dataset_id: str, error: str) -> None:
-        if dataset_id != self._selected_dataset_id:
+    @Slot(int, str, str, str)
+    def _operation_failed(
+        self,
+        context_token: int,
+        operation: str,
+        dataset_id: str,
+        error: str,
+    ) -> None:
+        if context_token != self._context_token:
             return
         self._busy = False
         self._busy_message = ""
+        if dataset_id == self._selected_dataset_id:
+            self._offset = 0
         self.changed.emit()
         title = "Import error" if operation == "import" else "Freeze error"
         self.operationFailed.emit(title, error)

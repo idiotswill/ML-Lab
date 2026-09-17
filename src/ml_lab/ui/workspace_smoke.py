@@ -38,12 +38,9 @@ def main() -> int:
         roots = engine.rootObjects()
         ok = bool(roots)
         if roots:
-            roots[0].setProperty("currentPage", 2)
-            app.processEvents()
-            roots[0].setProperty("currentPage", 3)
-            app.processEvents()
-            roots[0].setProperty("currentPage", 4)
-            app.processEvents()
+            for page in (2, 3, 4, 5):
+                roots[0].setProperty("currentPage", page)
+                app.processEvents()
 
         print(
             json.dumps(
@@ -52,6 +49,7 @@ def main() -> int:
                     "experiments_page": 2,
                     "compare_page": 3,
                     "redteam_failures_page": 4,
+                    "models_registry_page": 5,
                     "qml": str(qml_path),
                 },
                 sort_keys=True,

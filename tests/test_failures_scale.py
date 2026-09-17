@@ -82,6 +82,15 @@ def test_failure_library_pages_ten_thousand_with_regression_membership(
         project.id,
         severity=FailureSeverity.VETO,
     ) == _VETO_COUNT
+    assert service.count_for_project(
+        project.id,
+        regression_only=True,
+    ) == _REGRESSION_COUNT
+    assert service.count_for_project(
+        project.id,
+        severity=FailureSeverity.VETO,
+        regression_only=True,
+    ) == _VETO_COUNT
     assert service.regression_count(project.id) == _REGRESSION_COUNT
 
     first_entries = service.page_entries_for_project(project.id, limit=100)

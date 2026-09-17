@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -293,7 +293,7 @@ class DatasetService:
                 (dataset_id,),
             )
 
-            def examples() -> object:
+            def examples() -> Iterator[LeakageExample]:
                 for row in cursor:
                     yield LeakageExample(
                         example_id=row["example_id"],

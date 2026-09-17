@@ -4,10 +4,11 @@ import hashlib
 import json
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
 from ml_lab.jobs.protocol import JobSpec, event
+from ml_lab.trainers.phase_a_sparse import train_phase_a_sparse
 from ml_lab.trainers.sparse_nb import (
     evaluate_sparse_nb,
     read_jsonl_records,
@@ -122,6 +123,54 @@ def task_sparse_nb_train(spec: JobSpec, staging: Path) -> dict[str, object]:
     }
 
 
+def task_phase_a_sparse_train(spec: JobSpec, staging: Path) -> dict[str, object]:
+    train_paths, _dev_paths = _training_paths(spec.payload)
+    feature_dim = int(spec.payload.get("feature_dim", 32768))
+    alpha = float(spec.payload.get("alpha", 0.5))
+    train_examples = 0
+    last_reported = 0
+
+    def records() -> Iterator[Mapping[str, object]]:
+        nonlocal train_examples, last_reported
+        for record in read_jsonl_records(train_paths):
+            if _cancelled(staging):
+                raise InterruptedError("Cancellation requested")
+            train_examples += 1
+            if train_examples == 1 or train_examples - last_reported >= 100:
+                last_reported = train_examples
+                _emit(
+                    "progress",
+                    progress=min(0.9, 0.05 + train_examples / 50_000),
+                    message=f"Trained bounded Phase A scorer on {train_examples:,} examples",
+                )
+            yield record
+
+    model = train_phase_a_sparse(
+        records(),
+        feature_dim=feature_dim,
+        alpha=alpha,
+    )
+    if _cancelled(staging):
+        raise InterruptedError("Cancellation requested")
+    model_path = staging / "model.json"
+    model.save(model_path)
+    return {
+        "ok": True,
+        "trainer_id": "builtin.phase_a_sparse.v1",
+        "experiment_id": spec.payload.get("experiment_id"),
+        "train_examples": train_examples,
+        "feature_dim": feature_dim,
+        "alpha": alpha,
+        "outputs": [
+            {
+                "name": "model",
+                "path": "model.json",
+                "media_type": "application/vnd.ml-lab.phase-a-bounded-sparse+json",
+            }
+        ],
+    }
+
+
 def _training_paths(payload: dict[str, object]) -> tuple[list[Path], list[Path]]:
     staged = payload.get("staged_inputs")
     if staged is not None:
@@ -169,6 +218,7 @@ TASKS: dict[str, Task] = {
     "core.self_test": task_self_test,
     "core.hash_file": task_hash_file,
     "trainer.sparse_nb.v1": task_sparse_nb_train,
+    "trainer.phase_a_sparse.v1": task_phase_a_sparse_train,
 }
 
 

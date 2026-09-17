@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from ml_lab.core.models import (
@@ -66,6 +66,7 @@ class BaselineService:
         *,
         evaluator: CaseEvaluator,
         splits: Sequence[DatasetSplit] = (DatasetSplit.TEST, DatasetSplit.REDTEAM),
+        cancelled: Callable[[], bool] | None = None,
     ) -> BaselineRunResult:
         experiment = self.experiments.get(experiment_id)
         if not experiment.trainer_id.startswith("baseline:"):
@@ -82,6 +83,8 @@ class BaselineService:
         summaries: list[EvaluationSummary] = []
         try:
             for split in ordered_splits:
+                if cancelled is not None and cancelled():
+                    raise InterruptedError("Baseline cancellation requested")
                 handles = self.evaluation.datasets.evaluation_partition_handles(
                     experiment.dataset_id
                 )
@@ -104,7 +107,12 @@ class BaselineService:
                         experiment_id,
                         split,
                         evaluator,
+                        cancelled=cancelled,
                     )
+                )
+            if not summaries:
+                raise RuntimeError(
+                    "Baseline dataset has no protected TEST/REDTEAM examples."
                 )
             metrics = _summary_metrics(summaries)
             completed = self.experiments.complete(
@@ -112,6 +120,14 @@ class BaselineService:
                 metrics=metrics,
                 model_artifact_digest=None,
             )
+        except InterruptedError:
+            current = self.experiments.get(experiment_id)
+            if current.status is ExperimentStatus.RUNNING:
+                self.experiments.finish_without_success(
+                    experiment_id,
+                    ExperimentStatus.CANCELLED,
+                )
+            raise
         except Exception:
             current = self.experiments.get(experiment_id)
             if current.status is ExperimentStatus.RUNNING:

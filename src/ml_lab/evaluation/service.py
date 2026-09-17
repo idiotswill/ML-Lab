@@ -89,6 +89,8 @@ class EvaluationService:
         experiment_id: str,
         split: DatasetSplit,
         evaluator: CaseEvaluator,
+        *,
+        cancelled: Callable[[], bool] | None = None,
     ) -> EvaluationSummary:
         experiment = self.experiments.get(experiment_id)
         progress = self.progress(experiment_id, split)
@@ -113,6 +115,8 @@ class EvaluationService:
             for line_number, raw_line in enumerate(handle, start=1):
                 if not raw_line.strip():
                     continue
+                if cancelled is not None and cancelled():
+                    raise InterruptedError("Evaluation cancellation requested")
                 row = _decode_case(raw_line, path.name, line_number)
                 row_split = row.get("split")
                 if row_split != split.value:

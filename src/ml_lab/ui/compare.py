@@ -6,12 +6,18 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QRunnable, QThreadPool, Signal, Slot
 
+from ml_lab.adapters.phase_a import PHASE_A_ADAPTER_ID
 from ml_lab.core.models import DatasetSplit, ExperimentRecord, ExperimentStatus
-from ml_lab.evaluation.runners import evaluate_generic_sparse_experiment
+from ml_lab.evaluation.runners import evaluate_packaged_experiment
 from ml_lab.evaluation.service import EvaluationCaseRecord, EvaluationService
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.storage.workspace import Workspace
-from ml_lab.trainers.service import SPARSE_RUNTIME_PACK_ID, SPARSE_TRAINER_ID
+from ml_lab.trainers.service import (
+    PHASE_A_RUNTIME_PACK_ID,
+    PHASE_A_TRAINER_ID,
+    SPARSE_RUNTIME_PACK_ID,
+    SPARSE_TRAINER_ID,
+)
 
 
 class _EvaluationSignals(QObject):
@@ -42,7 +48,7 @@ class _EvaluationOperation(QRunnable):
     def run(self) -> None:
         try:
             workspace = Workspace.open(self.workspace_root)
-            evaluate_generic_sparse_experiment(
+            evaluate_packaged_experiment(
                 workspace,
                 self.experiment_id,
                 splits=(self.split,),
@@ -227,12 +233,16 @@ class CompareController(QObject):
                     f"Resume {self._split.value} evaluation from "
                     f"{progress.evaluated}/{progress.expected} committed cases."
                 )
+            if self._adapter_id == PHASE_A_ADAPTER_ID:
+                return (
+                    f"Run protected {self._split.value} evaluation against the pinned "
+                    "Frankenhomie residual validator."
+                )
             return f"Run protected {self._split.value} evaluation."
-        if self._adapter_id == "frankenhomie.phase_a.residual_semantics":
-            return (
-                "Phase A evidence can be browsed here, but running it requires a "
-                "configured pinned Frankenhomie reference-validation runtime."
-            )
+        if self._adapter_id == PHASE_A_ADAPTER_ID:
+            if record.trainer_id == PHASE_A_TRAINER_ID and not record.contract_snapshot_id:
+                return "Phase A evaluation requires the experiment's pinned contract snapshot."
+            return "No packaged pinned Phase A evaluator is compatible with this experiment."
         return "No packaged evaluator is compatible with this experiment."
 
     @Slot(str)
@@ -382,14 +392,24 @@ class CompareController(QObject):
         return record
 
     def _has_packaged_evaluator(self, record: ExperimentRecord | None) -> bool:
-        return bool(
-            record is not None
-            and record.status is ExperimentStatus.COMPLETED
-            and self._adapter_id == "generic"
-            and record.trainer_id == SPARSE_TRAINER_ID
-            and record.runtime_pack_id == SPARSE_RUNTIME_PACK_ID
-            and record.model_artifact_digest
-        )
+        if (
+            record is None
+            or record.status is not ExperimentStatus.COMPLETED
+            or not record.model_artifact_digest
+        ):
+            return False
+        if self._adapter_id == "generic":
+            return (
+                record.trainer_id == SPARSE_TRAINER_ID
+                and record.runtime_pack_id == SPARSE_RUNTIME_PACK_ID
+            )
+        if self._adapter_id == PHASE_A_ADAPTER_ID:
+            return bool(
+                record.trainer_id == PHASE_A_TRAINER_ID
+                and record.runtime_pack_id == PHASE_A_RUNTIME_PACK_ID
+                and record.contract_snapshot_id
+            )
+        return False
 
     def _can_run_evaluation(self) -> bool:
         if self._busy or not self._workspace:

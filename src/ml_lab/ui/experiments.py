@@ -17,6 +17,8 @@ from ml_lab.jobs.manager import JobManager
 from ml_lab.storage.workspace import Workspace
 from ml_lab.trainers.service import TrainingOption, TrainingService, training_options
 
+JobSignature = tuple[str, float, str, str]
+
 
 class ExperimentsController(QObject):
     changed = Signal()
@@ -32,6 +34,7 @@ class ExperimentsController(QObject):
         self._adapter_id = "generic"
         self._selected_experiment_id = ""
         self._job_ids: dict[str, str] = {}
+        self._job_signatures: dict[str, JobSignature] = {}
 
     def bind_project(
         self,
@@ -47,6 +50,7 @@ class ExperimentsController(QObject):
         self._adapter_id = adapter_id
         self._selected_experiment_id = ""
         self._job_ids.clear()
+        self._job_signatures.clear()
         self._reconcile_project()
         self.changed.emit()
 
@@ -58,6 +62,7 @@ class ExperimentsController(QObject):
         self._adapter_id = "generic"
         self._selected_experiment_id = ""
         self._job_ids.clear()
+        self._job_signatures.clear()
         self.changed.emit()
 
     @Property(bool, notify=changed)
@@ -160,7 +165,11 @@ class ExperimentsController(QObject):
         job = self._selected_job()
         if job is None:
             return False
-        return job.status in {JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELLING}
+        return job.status in {
+            JobStatus.QUEUED,
+            JobStatus.RUNNING,
+            JobStatus.CANCELLING,
+        }
 
     @Slot(str, str, str, str, str, str, str, str)
     def createAndLaunch(
@@ -224,6 +233,10 @@ class ExperimentsController(QObject):
                     )
                 raise
             self._job_ids[experiment.id] = state.job.id
+            self._job_signatures[experiment.id] = _state_signature(
+                state.job,
+                state.experiment.status,
+            )
             self.changed.emit()
             self.operationCompleted.emit(f"Launched experiment {experiment.id[:8]}")
         except (TypeError, ValueError, RuntimeError, KeyError) as exc:
@@ -261,7 +274,11 @@ class ExperimentsController(QObject):
             if not job_id:
                 job_id = self._training.job_for_experiment(item.id).id
                 self._job_ids[item.id] = job_id
-            self._training.cancel_job(item.id, job_id)
+            state = self._training.cancel_job(item.id, job_id)
+            self._job_signatures[item.id] = _state_signature(
+                state.job,
+                state.experiment.status,
+            )
             self.changed.emit()
             self.operationCompleted.emit("Cancellation requested")
         except (KeyError, RuntimeError, OSError) as exc:
@@ -282,18 +299,19 @@ class ExperimentsController(QObject):
                     continue
                 self._job_ids[item.id] = job_id
             try:
-                before = self._job_signature(job_id, item.status)
                 state = self._training.refresh_job(item.id, job_id)
-                after = (
-                    state.job.status.value,
-                    state.job.progress,
-                    state.job.message,
-                    state.experiment.status.value,
-                )
-            except (KeyError, RuntimeError, ValueError, OSError, json.JSONDecodeError) as exc:
+            except (
+                KeyError,
+                RuntimeError,
+                ValueError,
+                OSError,
+                json.JSONDecodeError,
+            ) as exc:
                 self.operationFailed.emit("Training refresh error", str(exc))
                 continue
-            if before != after:
+            signature = _state_signature(state.job, state.experiment.status)
+            if self._job_signatures.get(item.id) != signature:
+                self._job_signatures[item.id] = signature
                 changed = True
         if changed:
             self.changed.emit()
@@ -307,8 +325,18 @@ class ExperimentsController(QObject):
             try:
                 job = self._training.job_for_experiment(item.id)
                 self._job_ids[item.id] = job.id
-                self._training.refresh_job(item.id, job.id)
-            except (KeyError, RuntimeError, ValueError, OSError, json.JSONDecodeError):
+                state = self._training.refresh_job(item.id, job.id)
+                self._job_signatures[item.id] = _state_signature(
+                    state.job,
+                    state.experiment.status,
+                )
+            except (
+                KeyError,
+                RuntimeError,
+                ValueError,
+                OSError,
+                json.JSONDecodeError,
+            ):
                 continue
 
     def _ensure_job_link(self, item: ExperimentRecord) -> None:
@@ -317,9 +345,11 @@ class ExperimentsController(QObject):
         if item.status is ExperimentStatus.QUEUED:
             return
         try:
-            self._job_ids[item.id] = self._training.job_for_experiment(item.id).id
+            job = self._training.job_for_experiment(item.id)
         except KeyError:
-            pass
+            return
+        self._job_ids[item.id] = job.id
+        self._job_signatures[item.id] = _state_signature(job, item.status)
 
     def _selected_experiment(self) -> ExperimentRecord | None:
         if not self._workspace or not self._selected_experiment_id:
@@ -363,20 +393,9 @@ class ExperimentsController(QObject):
                 return option
         raise ValueError("Selected trainer is not runnable for this project adapter.")
 
-    def _job_signature(
-        self,
-        job_id: str,
-        experiment_status: ExperimentStatus,
-    ) -> tuple[str, float, str, str]:
-        if not self._jobs:
-            return ("", 0.0, "", experiment_status.value)
-        job = self._jobs.get(job_id)
-        return (
-            job.status.value,
-            job.progress,
-            job.message,
-            experiment_status.value,
-        )
+
+def _state_signature(job: JobRecord, status: ExperimentStatus) -> JobSignature:
+    return (job.status.value, job.progress, job.message, status.value)
 
 
 def _training_option_dict(item: TrainingOption) -> dict[str, object]:

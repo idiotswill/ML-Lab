@@ -89,7 +89,41 @@ def test_evaluation_streams_protected_partition_and_records_failures(tmp_path: P
     assert failures[0].split is DatasetSplit.TEST
 
 
-def test_evaluation_is_immutable_per_experiment_split(tmp_path: Path) -> None:
+def test_evaluation_resumes_partial_partition_without_rewriting_cases(tmp_path: Path) -> None:
+    workspace, experiment_id = _experiment(tmp_path)
+    service = EvaluationService(workspace)
+    first_pass_calls: list[str] = []
+
+    def interrupted(row: dict[str, object]) -> CaseOutcome:
+        example_id = str(row["example_id"])
+        first_pass_calls.append(example_id)
+        if example_id == "test-b":
+            raise RuntimeError("simulated interruption")
+        return CaseOutcome(observed=row["label"], correct=True, latency_ms=0.1)
+
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        service.evaluate_partition(experiment_id, DatasetSplit.TEST, interrupted)
+
+    progress = service.progress(experiment_id, DatasetSplit.TEST)
+    assert progress.expected == 2
+    assert progress.evaluated == 1
+    assert not progress.complete
+    assert first_pass_calls == ["test-a", "test-b"]
+
+    resumed_calls: list[str] = []
+
+    def resumed(row: dict[str, object]) -> CaseOutcome:
+        resumed_calls.append(str(row["example_id"]))
+        return CaseOutcome(observed=row["label"], correct=True, latency_ms=0.2)
+
+    summary = service.evaluate_partition(experiment_id, DatasetSplit.TEST, resumed)
+    assert resumed_calls == ["test-b"]
+    assert summary.total == 2
+    assert summary.correct == 2
+    assert service.progress(experiment_id, DatasetSplit.TEST).complete
+
+
+def test_evaluation_is_immutable_after_partition_completes(tmp_path: Path) -> None:
     workspace, experiment_id = _experiment(tmp_path)
     service = EvaluationService(workspace)
 

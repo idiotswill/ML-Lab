@@ -2,6 +2,7 @@ import json
 import time
 from pathlib import Path
 
+from ml_lab.adapters.phase_a import PHASE_A_ADAPTER_ID
 from ml_lab.core.models import DatasetSplit, ExperimentStatus, JobStatus
 from ml_lab.datasets.service import DatasetService, ValidatedExampleInput
 from ml_lab.experiments.service import ExperimentService
@@ -11,6 +12,7 @@ from ml_lab.trainers.service import (
     SPARSE_RUNTIME_PACK_ID,
     SPARSE_TRAINER_ID,
     TrainingService,
+    training_options,
 )
 from ml_lab.trainers.sparse_nb import SparseNBModel
 
@@ -54,11 +56,19 @@ def _training_experiment(tmp_path: Path) -> tuple[Workspace, str]:
     return workspace, experiment.id
 
 
+def test_training_options_expose_only_packaged_adapter_compatible_workers() -> None:
+    generic = training_options("generic")
+    assert [option.trainer_id for option in generic] == [SPARSE_TRAINER_ID]
+    assert generic[0].runtime_pack_id == SPARSE_RUNTIME_PACK_ID
+    assert training_options(PHASE_A_ADAPTER_ID) == ()
+    assert training_options("unknown-adapter") == ()
+
+
 def test_training_service_stages_only_train_and_dev_then_completes(tmp_path: Path) -> None:
     workspace, experiment_id = _training_experiment(tmp_path)
     service = TrainingService(workspace)
     try:
-        launched = service.launch_sparse(experiment_id)
+        launched = service.launch(experiment_id)
         assert launched.experiment.status is ExperimentStatus.RUNNING
 
         spec = JobSpec.read(launched.job.staging_dir / "job_spec.json")
@@ -78,14 +88,14 @@ def test_training_service_stages_only_train_and_dev_then_completes(tmp_path: Pat
         deadline = time.monotonic() + 20
         state = launched
         while time.monotonic() < deadline:
-            state = service.refresh(experiment_id)
+            state = service.refresh_job(experiment_id, launched.job.id)
             if state.job.status in {
                 JobStatus.COMPLETED,
                 JobStatus.FAILED,
                 JobStatus.CANCELLED,
                 JobStatus.INTERRUPTED,
             }:
-                state = service.refresh(experiment_id)
+                state = service.refresh_job(experiment_id, launched.job.id)
                 break
             time.sleep(0.03)
 

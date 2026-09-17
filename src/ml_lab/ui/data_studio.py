@@ -272,7 +272,10 @@ class DataStudioController(QObject):
         if not self._workspace:
             return
         if self._busy:
-            self.operationFailed.emit("Data Studio busy", "Finish the current data operation first.")
+            self.operationFailed.emit(
+                "Data Studio busy",
+                "Finish the current data operation first.",
+            )
             return
         self._busy = True
         self._busy_message = "Importing dataset…" if operation == "import" else "Freezing dataset…"

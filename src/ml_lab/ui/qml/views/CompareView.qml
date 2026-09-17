@@ -215,7 +215,7 @@ Item {
                         }
                         Item { Layout.fillWidth: true }
                         Text {
-                            text: appController.compare.comparisonRows.length
+                            text: appController.compare.experimentTotal + " total"
                             color: Theme.muted
                             font.pixelSize: 11
                         }
@@ -292,6 +292,31 @@ Item {
                             text: "No completed experiments yet."
                             color: Theme.dim
                             font.pixelSize: 12
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        LabButton {
+                            text: "Previous"
+                            enabled: appController.compare.canPreviousExperimentPage
+                            onClicked: appController.compare.previousExperimentPage()
+                        }
+                        Text {
+                            text: "Page " + appController.compare.experimentPageNumber
+                            color: Theme.muted
+                            font.pixelSize: 11
+                        }
+                        LabButton {
+                            text: "Next"
+                            enabled: appController.compare.canNextExperimentPage
+                            onClicked: appController.compare.nextExperimentPage()
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: appController.compare.comparisonRows.length + " shown"
+                            color: Theme.dim
+                            font.pixelSize: 10
                         }
                     }
                 }

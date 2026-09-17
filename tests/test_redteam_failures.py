@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from ml_lab.core.models import DatasetSplit, FailureSeverity
+import pytest
+
+from ml_lab.core.models import DatasetSplit, ExperimentStatus, FailureSeverity
 from ml_lab.datasets.service import DatasetService, ValidatedExampleInput
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.failures.service import FailureService
@@ -92,6 +94,7 @@ def test_generic_redteam_records_runs_failures_and_regression_membership(
     page = runs.page_for_project(experiment.project_id, limit=10)
     assert [item.id for item in page] == [summary.run_id]
     assert page[0].mutator_version == GENERIC_REDTEAM_SUITE_ID
+    assert page[0].status is ExperimentStatus.COMPLETED
     generated = runs.generated_cases(summary.run_id)
     assert len(generated) == 3
     assert {item["mutator_id"] for item in generated} == {
@@ -116,3 +119,30 @@ def test_generic_redteam_records_runs_failures_and_regression_membership(
     assert failures.is_regression_case(failure_id)
     assert failures.regression_count(experiment.project_id) == 1
     assert failures.immutable_payload(failure_id) == immutable_before
+
+
+def test_generic_redteam_cancel_during_scoring_is_interrupted(tmp_path: Path) -> None:
+    workspace, experiment_id = _completed_sparse_experiment(tmp_path)
+    experiment = ExperimentService(workspace).get(experiment_id)
+    checks = 0
+
+    def cancelled() -> bool:
+        nonlocal checks
+        checks += 1
+        return checks >= 2
+
+    with pytest.raises(InterruptedError):
+        run_generic_sparse_redteam(
+            workspace,
+            experiment_id,
+            seed=7,
+            max_base_cases=10,
+            cancelled=cancelled,
+        )
+
+    runs = RedTeamService(workspace)
+    page = runs.page_for_project(experiment.project_id, limit=10)
+    assert len(page) == 1
+    assert page[0].status is ExperimentStatus.INTERRUPTED
+    assert page[0].manifest_artifact_digest is None
+    assert runs.generated_cases(page[0].id) == []

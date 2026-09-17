@@ -23,6 +23,7 @@ from ml_lab.core.config import AppConfig, user_config_dir
 from ml_lab.diagnostics.hardware import HardwareInfo, collect_hardware_info
 from ml_lab.extensions.catalog import ExtensionCatalog
 from ml_lab.services import LabServices, open_or_create_workspace
+from ml_lab.ui.data_studio import DataStudioController
 
 LOGGER = logging.getLogger(__name__)
 
@@ -68,6 +69,9 @@ class AppController(QObject):
         self._catalog: ExtensionCatalog | None = None
         self._diagnostics: dict[str, object] = {}
         self._selected_project_id = ""
+        self._data_studio = DataStudioController(self)
+        self._data_studio.operationCompleted.connect(self.noticeRaised.emit)
+        self._data_studio.operationFailed.connect(self.errorRaised.emit)
         self._diagnostic_pool = QThreadPool(self)
         self._diagnostic_pool.setMaxThreadCount(1)
         self._diagnostics_loading = False
@@ -90,6 +94,10 @@ class AppController(QObject):
     @Property(str, notify=workspaceChanged)
     def workspacePath(self) -> str:
         return str(self._services.workspace.root) if self._services else ""
+
+    @Property(QObject, constant=True)
+    def dataStudio(self) -> QObject:
+        return self._data_studio
 
     @Property(list, notify=projectsChanged)
     def projects(self) -> list[dict[str, object]]:
@@ -176,6 +184,7 @@ class AppController(QObject):
         try:
             project = self._services.workspace.create_project(name, adapter_id, description)
             self._selected_project_id = project.id
+            self._bind_data_studio()
             self.projectsChanged.emit()
             self.selectionChanged.emit()
             self.noticeRaised.emit(f"Created project {name.strip()}")
@@ -186,10 +195,14 @@ class AppController(QObject):
     def openProject(self, project_id: str) -> None:
         if not self._services:
             return
-        if project_id not in {str(item["id"]) for item in self._services.workspace.project_dicts()}:
+        project_ids = {
+            str(item["id"]) for item in self._services.workspace.project_dicts()
+        }
+        if project_id not in project_ids:
             self.errorRaised.emit("Project error", "The selected project no longer exists.")
             return
         self._selected_project_id = project_id
+        self._bind_data_studio()
         self.selectionChanged.emit()
 
     @Slot(str)
@@ -200,6 +213,7 @@ class AppController(QObject):
             self._services.workspace.archive_project(project_id)
             if self._selected_project_id == project_id:
                 self._selected_project_id = ""
+                self._data_studio.clear_project()
                 self.selectionChanged.emit()
             self.projectsChanged.emit()
             self.noticeRaised.emit("Project archived")
@@ -281,6 +295,7 @@ class AppController(QObject):
             self.errorRaised.emit("Export error", str(exc))
 
     def shutdown(self) -> None:
+        self._data_studio.shutdown()
         self._diagnostic_pool.clear()
         self._diagnostic_pool.waitForDone(2500)
         if self._services:
@@ -289,16 +304,35 @@ class AppController(QObject):
     def _activate(self, services: LabServices) -> None:
         self._services = services
         self._selected_project_id = ""
+        self._data_studio.clear_project()
         self._catalog = ExtensionCatalog(services.workspace.root)
         self._catalog.load()
-        # A probe for a previous workspace may still be running. Reset the guard
-        # so the new workspace always gets its own queued probe; stale results are
-        # discarded by the workspace key in the completion slots below.
         self._diagnostics_loading = False
         self._refresh_diagnostics()
         self._poller.start()
         self.extensionsChanged.emit()
         self.selectionChanged.emit()
+
+    def _bind_data_studio(self) -> None:
+        if not self._services or not self._selected_project_id:
+            self._data_studio.clear_project()
+            return
+        project = next(
+            (
+                item
+                for item in self._services.workspace.project_dicts()
+                if item["id"] == self._selected_project_id
+            ),
+            None,
+        )
+        if project is None:
+            self._data_studio.clear_project()
+            return
+        self._data_studio.bind_project(
+            self._services.workspace,
+            self._selected_project_id,
+            str(project["adapter_id"]),
+        )
 
     def _refresh_diagnostics(self) -> None:
         if not self._services:

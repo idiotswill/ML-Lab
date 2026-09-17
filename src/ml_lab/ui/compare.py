@@ -18,6 +18,7 @@ from ml_lab.trainers.service import (
     SPARSE_RUNTIME_PACK_ID,
     SPARSE_TRAINER_ID,
 )
+from ml_lab.ui.phase_a_science import PhaseAScienceController
 
 
 class _EvaluationSignals(QObject):
@@ -96,6 +97,9 @@ class CompareController(QObject):
         self._cancel_event: threading.Event | None = None
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(1)
+        self._science = PhaseAScienceController(self)
+        self._science.operationCompleted.connect(self.operationCompleted.emit)
+        self._science.operationFailed.connect(self.operationFailed.emit)
 
     def bind_project(self, workspace: Workspace, project_id: str, adapter_id: str) -> None:
         self._cancel_active()
@@ -109,6 +113,7 @@ class CompareController(QObject):
         self._offset = 0
         self._selected_case_id = 0
         self._busy = False
+        self._science.bind_project(workspace, project_id, adapter_id)
         self.changed.emit()
 
     def clear_project(self) -> None:
@@ -123,12 +128,18 @@ class CompareController(QObject):
         self._offset = 0
         self._selected_case_id = 0
         self._busy = False
+        self._science.clear_project()
         self.changed.emit()
 
     def shutdown(self) -> None:
         self._cancel_active()
+        self._science.shutdown()
         self._pool.clear()
         self._pool.waitForDone(2500)
+
+    @Property(QObject, constant=True)
+    def science(self) -> QObject:
+        return self._science
 
     @Property(bool, notify=changed)
     def hasProject(self) -> bool:
@@ -220,9 +231,7 @@ class CompareController(QObject):
         record = self._selected_record()
         if record is None:
             return "Select a completed experiment to inspect protected evidence."
-        if self._has_packaged_evaluator(record):
-            if not self._workspace:
-                return ""
+        if self._workspace:
             progress = EvaluationService(self._workspace).progress(record.id, self._split)
             if progress.expected <= 0:
                 return f"This dataset has no {self._split.value} examples."
@@ -233,6 +242,7 @@ class CompareController(QObject):
                     f"Resume {self._split.value} evaluation from "
                     f"{progress.evaluated}/{progress.expected} committed cases."
                 )
+        if self._has_packaged_evaluator(record):
             if self._adapter_id == PHASE_A_ADAPTER_ID:
                 return (
                     f"Run protected {self._split.value} evaluation against the pinned "
@@ -240,6 +250,8 @@ class CompareController(QObject):
                 )
             return f"Run protected {self._split.value} evaluation."
         if self._adapter_id == PHASE_A_ADAPTER_ID:
+            if record.trainer_id.startswith("baseline:"):
+                return "Baseline evidence is created as an immutable protected evaluation run."
             if record.trainer_id == PHASE_A_TRAINER_ID and not record.contract_snapshot_id:
                 return "Phase A evaluation requires the experiment's pinned contract snapshot."
             return "No packaged pinned Phase A evaluator is compatible with this experiment."
@@ -275,7 +287,10 @@ class CompareController(QObject):
     def setSplit(self, split: str) -> None:
         normalized = split.strip().upper()
         if normalized not in {DatasetSplit.TEST.value, DatasetSplit.REDTEAM.value}:
-            self.operationFailed.emit("Compare error", f"Unsupported protected split: {split}")
+            self.operationFailed.emit(
+                "Compare error",
+                f"Unsupported protected split: {split}",
+            )
             return
         self._split = DatasetSplit(normalized)
         self._offset = 0
@@ -341,6 +356,7 @@ class CompareController(QObject):
             return
         self._busy = False
         self._cancel_event = None
+        self._science.refresh()
         self.changed.emit()
         self.operationCompleted.emit(
             f"Protected {split} evaluation complete for {experiment_id[:8]}"
@@ -352,9 +368,11 @@ class CompareController(QObject):
             return
         self._busy = False
         self._cancel_event = None
+        self._science.refresh()
         self.changed.emit()
         self.operationCompleted.emit(
-            f"{split} evaluation cancelled; committed evidence for {experiment_id[:8]} is resumable"
+            f"{split} evaluation cancelled; committed evidence for "
+            f"{experiment_id[:8]} is resumable"
         )
 
     @Slot(int, str, str, str)
@@ -369,6 +387,7 @@ class CompareController(QObject):
             return
         self._busy = False
         self._cancel_event = None
+        self._science.refresh()
         self.changed.emit()
         self.operationFailed.emit(
             "Evaluation error",

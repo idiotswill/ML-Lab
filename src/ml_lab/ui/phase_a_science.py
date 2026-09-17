@@ -6,12 +6,10 @@ from pathlib import Path
 from PySide6.QtCore import Property, QObject, QRunnable, QThreadPool, Signal, Slot
 
 from ml_lab.adapters.phase_a import PHASE_A_ADAPTER_ID
-from ml_lab.baselines.phase_a import (
-    phase_a_baseline_options,
-    run_phase_a_baseline,
-)
+from ml_lab.baselines.phase_a import phase_a_baseline_options, run_phase_a_baseline
 from ml_lab.core.models import DatasetSplit, ExperimentRecord, ExperimentStatus
 from ml_lab.evaluation.phase_a_metrics import (
+    PhaseAProviderReference,
     load_pinned_provider_reference,
     metric_rows_for_ui,
     summarize_phase_a_experiment,
@@ -29,14 +27,14 @@ class _ScienceAnalysis(QRunnable):
     def __init__(
         self,
         *,
-        context_token: int,
+        analysis_token: int,
         workspace_root: Path,
         experiment_id: str,
         split: DatasetSplit,
         snapshot_id: str | None,
     ) -> None:
         super().__init__()
-        self.context_token = context_token
+        self.analysis_token = analysis_token
         self.workspace_root = workspace_root
         self.experiment_id = experiment_id
         self.split = split
@@ -62,14 +60,14 @@ class _ScienceAnalysis(QRunnable):
             provider_payload = _provider_payload(provider)
         except Exception as exc:
             self.signals.failed.emit(
-                self.context_token,
+                self.analysis_token,
                 self.experiment_id,
                 self.split.value,
                 f"{type(exc).__name__}: {exc}",
             )
             return
         self.signals.completed.emit(
-            self.context_token,
+            self.analysis_token,
             self.experiment_id,
             self.split.value,
             metrics,
@@ -147,6 +145,7 @@ class PhaseAScienceController(QObject):
         self._selected_experiment_id = ""
         self._split = DatasetSplit.TEST
         self._context_token = 0
+        self._analysis_token = 0
         self._analysis_loading = False
         self._baseline_busy = False
         self._busy_message = ""
@@ -161,6 +160,7 @@ class PhaseAScienceController(QObject):
     def bind_project(self, workspace: Workspace, project_id: str, adapter_id: str) -> None:
         self._cancel_active()
         self._context_token += 1
+        self._analysis_token += 1
         self._workspace = workspace
         self._project_id = project_id
         self._adapter_id = adapter_id
@@ -176,6 +176,7 @@ class PhaseAScienceController(QObject):
     def clear_project(self) -> None:
         self._cancel_active()
         self._context_token += 1
+        self._analysis_token += 1
         self._workspace = None
         self._project_id = ""
         self._adapter_id = "generic"
@@ -190,6 +191,7 @@ class PhaseAScienceController(QObject):
 
     def shutdown(self) -> None:
         self._cancel_active()
+        self._analysis_token += 1
         self._analysis_pool.clear()
         self._baseline_pool.clear()
         self._analysis_pool.waitForDone(2500)
@@ -253,6 +255,7 @@ class PhaseAScienceController(QObject):
             return
         clean_id = experiment_id.strip()
         if not clean_id:
+            self._analysis_token += 1
             self._selected_experiment_id = ""
             self._metrics = []
             self._provider = {}
@@ -263,13 +266,13 @@ class PhaseAScienceController(QObject):
             record = ExperimentService(self._workspace).get(clean_id)
         except KeyError:
             return
-        if record.project_id != self._project_id or record.status is not ExperimentStatus.COMPLETED:
+        if (
+            record.project_id != self._project_id
+            or record.status is not ExperimentStatus.COMPLETED
+        ):
             return
         selected_split = DatasetSplit(normalized)
-        if (
-            clean_id == self._selected_experiment_id
-            and selected_split is self._split
-        ):
+        if clean_id == self._selected_experiment_id and selected_split is self._split:
             return
         self._selected_experiment_id = clean_id
         self._split = selected_split
@@ -397,11 +400,13 @@ class PhaseAScienceController(QObject):
     def _start_analysis(self, record: ExperimentRecord) -> None:
         if not self._workspace:
             return
+        self._analysis_token += 1
+        current_token = self._analysis_token
         self._analysis_loading = True
         self._metrics = []
         self._provider = {}
         operation = _ScienceAnalysis(
-            context_token=self._context_token,
+            analysis_token=current_token,
             workspace_root=self._workspace.root,
             experiment_id=record.id,
             split=self._split,
@@ -424,7 +429,11 @@ class PhaseAScienceController(QObject):
             return None
         return record
 
-    def _completed_baseline_id(self, record: ExperimentRecord, baseline_id: str) -> str | None:
+    def _completed_baseline_id(
+        self,
+        record: ExperimentRecord,
+        baseline_id: str,
+    ) -> str | None:
         if not self._workspace or record.contract_snapshot_id is None:
             return None
         trainer_id = f"baseline:{baseline_id}"
@@ -445,7 +454,7 @@ class PhaseAScienceController(QObject):
 
     def _active_analysis(self, token: int, experiment_id: str, split: str) -> bool:
         return (
-            token == self._context_token
+            token == self._analysis_token
             and experiment_id == self._selected_experiment_id
             and split == self._split.value
         )
@@ -456,13 +465,9 @@ class PhaseAScienceController(QObject):
         self._cancel_event = None
 
 
-def _provider_payload(provider: object) -> dict[str, object]:
+def _provider_payload(provider: PhaseAProviderReference | None) -> dict[str, object]:
     if provider is None:
         return {"available": False}
-    from ml_lab.evaluation.phase_a_metrics import PhaseAProviderReference
-
-    if not isinstance(provider, PhaseAProviderReference):
-        raise TypeError("Invalid Phase A provider reference")
     return {
         "available": True,
         "model": provider.model,

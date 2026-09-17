@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -9,7 +10,7 @@ import uuid
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 from ml_lab.contracts.snapshot import ContractSnapshotService
 from ml_lab.core.models import ModelStage, utc_now_iso
@@ -184,6 +185,70 @@ class BundleService:
             raise KeyError(f"Unknown bundle {bundle_id}")
         return _bundle_from_row(row)
 
+    def list_for_project(
+        self,
+        project_id: str,
+        *,
+        limit: int = 200,
+    ) -> list[BundleRecord]:
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        with self.database.connection() as conn:
+            rows = conn.execute(
+                "SELECT b.* FROM bundles AS b "
+                "JOIN models AS m ON m.id=b.model_id "
+                "WHERE m.project_id=? ORDER BY b.created_at DESC,b.id LIMIT ?",
+                (project_id, limit),
+            ).fetchall()
+        return [_bundle_from_row(row) for row in rows]
+
+    def list_for_model(
+        self,
+        model_id: str,
+        *,
+        limit: int = 200,
+    ) -> list[BundleRecord]:
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        self.models.get(model_id)
+        with self.database.connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM bundles WHERE model_id=? "
+                "ORDER BY created_at DESC,id LIMIT ?",
+                (model_id, limit),
+            ).fetchall()
+        return [_bundle_from_row(row) for row in rows]
+
+    def export_bundle(self, bundle_id: str, target: Path) -> Path:
+        bundle = self.get(bundle_id)
+        source = self.artifacts.resolve(bundle.bundle_artifact_digest)
+        destination = target.expanduser()
+        if destination.suffix.casefold() != ".zip":
+            destination = destination.with_suffix(".zip")
+        destination = destination.resolve()
+        artifact_root = self.artifacts.root.resolve()
+        if destination == source.resolve() or destination.is_relative_to(artifact_root):
+            raise ValueError("Bundle exports cannot overwrite the immutable artifact store.")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+
+        temp_path: Path | None = None
+        try:
+            with NamedTemporaryFile(dir=destination.parent, delete=False) as temporary:
+                temp_path = Path(temporary.name)
+                with source.open("rb") as input_file:
+                    shutil.copyfileobj(input_file, temporary, length=1024 * 1024)
+                temporary.flush()
+                os.fsync(temporary.fileno())
+            exported_digest = _hash_file(temp_path)
+            if exported_digest != bundle.bundle_artifact_digest:
+                raise OSError("Exported bundle failed SHA-256 verification.")
+            os.replace(temp_path, destination)
+            temp_path = None
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+        return destination
+
     def verify_fresh(self, bundle_id: str) -> VerificationReceipt:
         bundle = self.get(bundle_id)
         bundle_path = self.artifacts.resolve(bundle.bundle_artifact_digest)
@@ -257,10 +322,28 @@ class BundleService:
         with self.database.connection() as conn:
             rows = conn.execute(
                 "SELECT * FROM verification_receipts "
-                "WHERE bundle_id=? ORDER BY created_at,id",
+                "WHERE bundle_id=? ORDER BY created_at DESC,id DESC",
                 (bundle_id,),
             ).fetchall()
         return [_receipt_from_row(row) for row in rows]
+
+    def receipt_payload(self, receipt_id: str) -> dict[str, object]:
+        with self.database.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM verification_receipts WHERE id=?",
+                (receipt_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown verification receipt {receipt_id}")
+        receipt = _receipt_from_row(row)
+        payload = json.loads(
+            self.artifacts.resolve(receipt.receipt_artifact_digest).read_text(
+                encoding="utf-8"
+            )
+        )
+        if not isinstance(payload, dict):
+            raise ValueError("Verification receipt artifact is not a JSON object.")
+        return dict(payload)
 
     def _experiment_failures(self, experiment_id: str) -> list[dict[str, object]]:
         with self.database.connection() as conn:
@@ -332,6 +415,14 @@ def _zip_info(name: str) -> zipfile.ZipInfo:
 
 def _json_bytes(value: object) -> bytes:
     return (canonical_json(value) + "\n").encode("utf-8")
+
+
+def _hash_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def _bundle_from_row(row: sqlite3.Row) -> BundleRecord:

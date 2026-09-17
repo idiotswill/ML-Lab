@@ -38,6 +38,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+6"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 5 }
     Shortcut { sequence: "Ctrl+7"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 6 }
     Shortcut { sequence: "Ctrl+8"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 7 }
+    Shortcut { sequence: "Ctrl+9"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 8 }
 
     Connections {
         target: appController
@@ -173,6 +174,7 @@ ApplicationWindow {
                                 "Experiments",
                                 "Compare",
                                 "Red Team & Failures",
+                                "Models & Registry",
                                 "Jobs",
                                 "Diagnostics",
                                 "Settings"
@@ -247,6 +249,7 @@ ApplicationWindow {
                         ExperimentsView {}
                         CompareView {}
                         RedTeamFailuresView {}
+                        ModelsRegistryView {}
                         JobsView {}
                         DiagnosticsView {}
                         SettingsView {}

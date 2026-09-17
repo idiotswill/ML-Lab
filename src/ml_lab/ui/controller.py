@@ -26,6 +26,7 @@ from ml_lab.services import LabServices, open_or_create_workspace
 from ml_lab.ui.compare import CompareController
 from ml_lab.ui.data_studio import DataStudioController
 from ml_lab.ui.experiments import ExperimentsController
+from ml_lab.ui.redteam_failures import RedTeamFailuresController
 
 LOGGER = logging.getLogger(__name__)
 
@@ -80,6 +81,9 @@ class AppController(QObject):
         self._compare = CompareController(self)
         self._compare.operationCompleted.connect(self.noticeRaised.emit)
         self._compare.operationFailed.connect(self.errorRaised.emit)
+        self._redteam_failures = RedTeamFailuresController(self)
+        self._redteam_failures.operationCompleted.connect(self.noticeRaised.emit)
+        self._redteam_failures.operationFailed.connect(self.errorRaised.emit)
         self._diagnostic_pool = QThreadPool(self)
         self._diagnostic_pool.setMaxThreadCount(1)
         self._diagnostics_loading = False
@@ -114,6 +118,10 @@ class AppController(QObject):
     @Property(QObject, constant=True)
     def compare(self) -> QObject:
         return self._compare
+
+    @Property(QObject, constant=True)
+    def redTeamFailures(self) -> QObject:
+        return self._redteam_failures
 
     @Property(list, notify=projectsChanged)
     def projects(self) -> list[dict[str, object]]:
@@ -173,6 +181,7 @@ class AppController(QObject):
             services = open_or_create_workspace(normalized, create=create)
             if self._services:
                 self._compare.clear_project()
+                self._redteam_failures.clear_project()
                 self._services.close()
             self._activate(services)
             self._config.recent_workspace = str(normalized)
@@ -233,6 +242,7 @@ class AppController(QObject):
                 self._data_studio.clear_project()
                 self._experiments.clear_project()
                 self._compare.clear_project()
+                self._redteam_failures.clear_project()
                 self.selectionChanged.emit()
             self.projectsChanged.emit()
             self.noticeRaised.emit("Project archived")
@@ -314,6 +324,7 @@ class AppController(QObject):
             self.errorRaised.emit("Export error", str(exc))
 
     def shutdown(self) -> None:
+        self._redteam_failures.shutdown()
         self._compare.shutdown()
         self._data_studio.shutdown()
         self._diagnostic_pool.clear()
@@ -327,6 +338,7 @@ class AppController(QObject):
         self._data_studio.clear_project()
         self._experiments.clear_project()
         self._compare.clear_project()
+        self._redteam_failures.clear_project()
         self._catalog = ExtensionCatalog(services.workspace.root)
         self._catalog.load()
         self._diagnostics_loading = False
@@ -340,6 +352,7 @@ class AppController(QObject):
             self._data_studio.clear_project()
             self._experiments.clear_project()
             self._compare.clear_project()
+            self._redteam_failures.clear_project()
             return
         project = next(
             (
@@ -353,6 +366,7 @@ class AppController(QObject):
             self._data_studio.clear_project()
             self._experiments.clear_project()
             self._compare.clear_project()
+            self._redteam_failures.clear_project()
             return
         adapter_id = str(project["adapter_id"])
         self._data_studio.bind_project(
@@ -367,6 +381,11 @@ class AppController(QObject):
             adapter_id,
         )
         self._compare.bind_project(
+            self._services.workspace,
+            self._selected_project_id,
+            adapter_id,
+        )
+        self._redteam_failures.bind_project(
             self._services.workspace,
             self._selected_project_id,
             adapter_id,

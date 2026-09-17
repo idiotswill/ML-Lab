@@ -9,7 +9,7 @@ Panel {
     required property var compareController
     required property var scienceController
 
-    implicitHeight: 232
+    implicitHeight: 332
 
     function providerMetric(metricId) {
         const metrics = scienceController.providerReference.metrics || []
@@ -66,8 +66,8 @@ Panel {
         spacing: 12
 
         ColumnLayout {
-            Layout.preferredWidth: 230
-            Layout.minimumWidth: 205
+            Layout.preferredWidth: 305
+            Layout.minimumWidth: 270
             Layout.fillHeight: true
             spacing: 7
 
@@ -109,6 +109,124 @@ Panel {
                         text: modelData.completed ? modelData.name + " ✓" : modelData.name
                         enabled: !scienceController.busy
                         onClicked: scienceController.runBaseline(modelData.baselineId)
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: 116
+                radius: 7
+                color: Theme.surfaceAlt
+                border.color: Theme.border
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 5
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "LOCAL PROVIDER · SAME DATASET"
+                            color: Theme.text2
+                            font.pixelSize: 9
+                            font.weight: Font.Bold
+                        }
+
+                        StatusPill {
+                            text: "LOOPBACK ONLY"
+                            tone: "good"
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 5
+
+                        TextField {
+                            id: modelField
+                            Layout.preferredWidth: 128
+                            text: scienceController.providerModel
+                            placeholderText: "Local model"
+                            font.pixelSize: 9
+                            activeFocusOnTab: true
+                            Accessible.name: "Local provider model"
+                            onEditingFinished: scienceController.setProviderModel(text)
+                        }
+
+                        TextField {
+                            id: endpointField
+                            Layout.fillWidth: true
+                            text: scienceController.providerEndpoint
+                            placeholderText: "http://127.0.0.1:11434/v1/chat/completions"
+                            font.pixelSize: 9
+                            activeFocusOnTab: true
+                            Accessible.name: "Local provider endpoint"
+                            onEditingFinished: scienceController.setProviderEndpoint(text)
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 5
+
+                        Text {
+                            text: "Timeout"
+                            color: Theme.dim
+                            font.pixelSize: 9
+                        }
+
+                        TextField {
+                            id: timeoutField
+                            Layout.preferredWidth: 58
+                            text: Number(scienceController.providerTimeoutSeconds).toFixed(0)
+                            validator: IntValidator { bottom: 1; top: 900 }
+                            inputMethodHints: Qt.ImhDigitsOnly
+                            font.pixelSize: 9
+                            activeFocusOnTab: true
+                            Accessible.name: "Local provider timeout seconds"
+                            onEditingFinished: {
+                                if (acceptableInput)
+                                    scienceController.setProviderTimeoutSeconds(Number(text))
+                            }
+                        }
+
+                        Text {
+                            text: "s"
+                            color: Theme.dim
+                            font.pixelSize: 9
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        LabButton {
+                            text: scienceController.providerExistingExperimentId ?
+                                      "Local provider ✓" : "Run local provider"
+                            primary: true
+                            enabled: !scienceController.busy &&
+                                     scienceController.providerConfigValid &&
+                                     compareController.selectedExperiment.id
+                            onClicked: {
+                                scienceController.setProviderModel(modelField.text)
+                                scienceController.setProviderEndpoint(endpointField.text)
+                                if (timeoutField.acceptableInput)
+                                    scienceController.setProviderTimeoutSeconds(
+                                        Number(timeoutField.text)
+                                    )
+                                scienceController.runProviderBaseline()
+                            }
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Manual run only. http:// localhost / loopback IPs are accepted; no remote API or key path exists here."
+                        color: Theme.dim
+                        font.pixelSize: 8
+                        wrapMode: Text.WordWrap
                     }
                 }
             }

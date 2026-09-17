@@ -200,6 +200,10 @@ class CompareController(QObject):
     def comparisonRows(self) -> list[dict[str, object]]:
         return self._load_comparison_rows()
 
+    @Property(str, notify=changed)
+    def selectedExperimentId(self) -> str:
+        return self._selected_experiment_id
+
     @Property(dict, notify=changed)
     def selectedExperiment(self) -> dict[str, object]:
         if not self._selected_experiment_id:

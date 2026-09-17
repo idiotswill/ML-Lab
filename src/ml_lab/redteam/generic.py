@@ -40,6 +40,7 @@ def run_generic_sparse_redteam(
     The runner consumes only the immutable REDTEAM partition and the completed model
     artifact. It cannot mutate a project, dataset, or Frankenhomie state. Generated
     misses are preserved as ordinary immutable failure records linked to the red-team run.
+    The run itself remains RUNNING until every generated case has been scored.
     """
     if not 1 <= max_base_cases <= 5000:
         raise ValueError("max_base_cases must be between 1 and 5000")
@@ -98,58 +99,74 @@ def run_generic_sparse_redteam(
 
     mutators = _text_mutators(model.text_key)
     runs = RedTeamService(workspace)
-    run = runs.run_suite(
+    run = runs.start_run(
         project_id=experiment.project_id,
         dataset_id=experiment.dataset_id,
         experiment_id=experiment.id,
         seed=seed,
         mutator_version=GENERIC_REDTEAM_SUITE_ID,
+    )
+    generated = runs.generate_cases(
+        seed=seed,
         base_cases=base_cases,
         mutators=mutators,
-        metadata={
-            "suite_id": GENERIC_REDTEAM_SUITE_ID,
-            "base_case_limit": max_base_cases,
-            "protected_split": DatasetSplit.REDTEAM.value,
-        },
     )
 
     failures = FailureService(workspace)
     failure_count = 0
-    generated = runs.generated_cases(run.id)
-    for case in generated:
-        if cancelled is not None and cancelled():
-            raise InterruptedError("Red-team cancellation requested after generation")
-        payload = case.get("payload")
-        expected = case.get("expected")
-        if not isinstance(payload, Mapping) or not isinstance(expected, Mapping):
-            raise ValueError("Generated red-team case has invalid payload/expected shape.")
-        outcome = evaluator({"payload": payload, "label": expected})
-        if outcome.correct:
-            continue
-        failure_count += 1
-        evidence: dict[str, object] = {
-            "suite_id": GENERIC_REDTEAM_SUITE_ID,
-            "base_case_id": str(case.get("base_case_id", "")),
-            "mutator_id": str(case.get("mutator_id", "")),
-            "derived_seed": int(case.get("derived_seed", 0)),
-            "authority_mutation_attempted": False,
-        }
-        if outcome.evidence is not None:
-            evidence.update(dict(outcome.evidence))
-        failures.record(
-            project_id=experiment.project_id,
-            experiment_id=experiment.id,
-            dataset_id=experiment.dataset_id,
-            redteam_run_id=run.id,
-            example_id=str(case.get("case_id", "")),
-            split=DatasetSplit.REDTEAM,
-            kind=outcome.failure_kind or "REDTEAM_MISMATCH",
-            severity=outcome.failure_severity or FailureSeverity.NON_VETO,
-            expected=expected,
-            observed=outcome.observed,
-            evidence=evidence,
-        )
+    try:
+        for case in generated:
+            if cancelled is not None and cancelled():
+                raise InterruptedError("Red-team cancellation requested during scoring")
+            payload = case.get("payload")
+            expected = case.get("expected")
+            if not isinstance(payload, Mapping) or not isinstance(expected, Mapping):
+                raise ValueError("Generated red-team case has invalid payload/expected shape.")
+            outcome = evaluator({"payload": payload, "label": expected})
+            if outcome.correct:
+                continue
+            failure_count += 1
+            evidence: dict[str, object] = {
+                "suite_id": GENERIC_REDTEAM_SUITE_ID,
+                "base_case_id": str(case.get("base_case_id", "")),
+                "mutator_id": str(case.get("mutator_id", "")),
+                "derived_seed": int(case.get("derived_seed", 0)),
+                "authority_mutation_attempted": False,
+            }
+            if outcome.evidence is not None:
+                evidence.update(dict(outcome.evidence))
+            failures.record(
+                project_id=experiment.project_id,
+                experiment_id=experiment.id,
+                dataset_id=experiment.dataset_id,
+                redteam_run_id=run.id,
+                example_id=str(case.get("case_id", "")),
+                split=DatasetSplit.REDTEAM,
+                kind=outcome.failure_kind or "REDTEAM_MISMATCH",
+                severity=outcome.failure_severity or FailureSeverity.NON_VETO,
+                expected=expected,
+                observed=outcome.observed,
+                evidence=evidence,
+            )
+    except InterruptedError:
+        runs.interrupt_run(run.id)
+        raise
+    except Exception:
+        runs.fail_run(run.id)
+        raise
 
+    runs.complete_run(
+        run.id,
+        generated_cases=generated,
+        mutator_ids=[mutator.mutator_id for mutator in mutators],
+        metadata={
+            "suite_id": GENERIC_REDTEAM_SUITE_ID,
+            "base_case_limit": max_base_cases,
+            "protected_split": DatasetSplit.REDTEAM.value,
+            "scored_cases": len(generated),
+            "failure_count": failure_count,
+        },
+    )
     return GenericRedTeamSummary(
         run_id=run.id,
         base_cases=len(base_cases),

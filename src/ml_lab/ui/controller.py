@@ -23,6 +23,7 @@ from ml_lab.core.config import AppConfig, user_config_dir
 from ml_lab.diagnostics.hardware import HardwareInfo, collect_hardware_info
 from ml_lab.extensions.catalog import ExtensionCatalog
 from ml_lab.services import LabServices, open_or_create_workspace
+from ml_lab.ui.compare import CompareController
 from ml_lab.ui.data_studio import DataStudioController
 from ml_lab.ui.experiments import ExperimentsController
 
@@ -76,6 +77,9 @@ class AppController(QObject):
         self._experiments = ExperimentsController(self)
         self._experiments.operationCompleted.connect(self.noticeRaised.emit)
         self._experiments.operationFailed.connect(self.errorRaised.emit)
+        self._compare = CompareController(self)
+        self._compare.operationCompleted.connect(self.noticeRaised.emit)
+        self._compare.operationFailed.connect(self.errorRaised.emit)
         self._diagnostic_pool = QThreadPool(self)
         self._diagnostic_pool.setMaxThreadCount(1)
         self._diagnostics_loading = False
@@ -106,6 +110,10 @@ class AppController(QObject):
     @Property(QObject, constant=True)
     def experiments(self) -> QObject:
         return self._experiments
+
+    @Property(QObject, constant=True)
+    def compare(self) -> QObject:
+        return self._compare
 
     @Property(list, notify=projectsChanged)
     def projects(self) -> list[dict[str, object]]:
@@ -164,6 +172,7 @@ class AppController(QObject):
             normalized = _url_or_path(path)
             services = open_or_create_workspace(normalized, create=create)
             if self._services:
+                self._compare.clear_project()
                 self._services.close()
             self._activate(services)
             self._config.recent_workspace = str(normalized)
@@ -223,6 +232,7 @@ class AppController(QObject):
                 self._selected_project_id = ""
                 self._data_studio.clear_project()
                 self._experiments.clear_project()
+                self._compare.clear_project()
                 self.selectionChanged.emit()
             self.projectsChanged.emit()
             self.noticeRaised.emit("Project archived")
@@ -294,16 +304,17 @@ class AppController(QObject):
                     for log in sorted(app_log_dir.glob("*.log*")):
                         archive.write(log, f"app-logs/{log.name}")
                 for job in self._services.jobs.list_recent(10):
-                    for name in ("events.jsonl", "stderr.log", "job_spec.json"):
-                        source = job.staging_dir / name
+                    for child_name in ("events.jsonl", "stderr.log", "job_spec.json"):
+                        source = job.staging_dir / child_name
                         if source.exists():
-                            archive.write(source, f"jobs/{job.id}/{name}")
+                            archive.write(source, f"jobs/{job.id}/{child_name}")
             self.noticeRaised.emit(f"Diagnostics exported to {target.name}")
         except Exception as exc:
             LOGGER.exception("Diagnostics export failed")
             self.errorRaised.emit("Export error", str(exc))
 
     def shutdown(self) -> None:
+        self._compare.shutdown()
         self._data_studio.shutdown()
         self._diagnostic_pool.clear()
         self._diagnostic_pool.waitForDone(2500)
@@ -315,6 +326,7 @@ class AppController(QObject):
         self._selected_project_id = ""
         self._data_studio.clear_project()
         self._experiments.clear_project()
+        self._compare.clear_project()
         self._catalog = ExtensionCatalog(services.workspace.root)
         self._catalog.load()
         self._diagnostics_loading = False
@@ -327,6 +339,7 @@ class AppController(QObject):
         if not self._services or not self._selected_project_id:
             self._data_studio.clear_project()
             self._experiments.clear_project()
+            self._compare.clear_project()
             return
         project = next(
             (
@@ -339,6 +352,7 @@ class AppController(QObject):
         if project is None:
             self._data_studio.clear_project()
             self._experiments.clear_project()
+            self._compare.clear_project()
             return
         adapter_id = str(project["adapter_id"])
         self._data_studio.bind_project(
@@ -349,6 +363,11 @@ class AppController(QObject):
         self._experiments.bind_project(
             self._services.workspace,
             self._services.jobs,
+            self._selected_project_id,
+            adapter_id,
+        )
+        self._compare.bind_project(
+            self._services.workspace,
             self._selected_project_id,
             adapter_id,
         )

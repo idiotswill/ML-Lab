@@ -126,6 +126,24 @@ class FailureService:
             ).fetchall()
         return [_failure_from_row(row) for row in rows]
 
+    def count_for_project(
+        self,
+        project_id: str,
+        *,
+        severity: FailureSeverity | None = None,
+    ) -> int:
+        where = "project_id=?"
+        params: list[object] = [project_id]
+        if severity is not None:
+            where += " AND severity=?"
+            params.append(severity.value)
+        with self.database.connection() as conn:
+            row = conn.execute(
+                f"SELECT COUNT(*) FROM failures WHERE {where}",
+                tuple(params),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
     def promote_to_regression(
         self,
         failure_id: str,
@@ -142,6 +160,34 @@ class FailureService:
                 "(failure_id,suite_name,promoted_at) VALUES(?,?,?)",
                 (failure_id, clean_suite, utc_now_iso()),
             )
+
+    def is_regression_case(
+        self,
+        failure_id: str,
+        *,
+        suite_name: str = "default",
+    ) -> bool:
+        with self.database.connection() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM regression_cases WHERE failure_id=? AND suite_name=?",
+                (failure_id, suite_name),
+            ).fetchone()
+        return row is not None
+
+    def regression_count(
+        self,
+        project_id: str,
+        *,
+        suite_name: str = "default",
+    ) -> int:
+        with self.database.connection() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM regression_cases r "
+                "JOIN failures f ON f.id=r.failure_id "
+                "WHERE f.project_id=? AND r.suite_name=?",
+                (project_id, suite_name),
+            ).fetchone()
+        return int(row[0]) if row else 0
 
     def regression_cases(
         self,

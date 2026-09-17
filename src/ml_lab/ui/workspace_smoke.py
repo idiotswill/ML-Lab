@@ -42,6 +42,8 @@ def main() -> int:
             app.processEvents()
             roots[0].setProperty("currentPage", 3)
             app.processEvents()
+            roots[0].setProperty("currentPage", 4)
+            app.processEvents()
 
         print(
             json.dumps(
@@ -49,6 +51,7 @@ def main() -> int:
                     "ok": ok,
                     "experiments_page": 2,
                     "compare_page": 3,
+                    "redteam_failures_page": 4,
                     "qml": str(qml_path),
                 },
                 sort_keys=True,

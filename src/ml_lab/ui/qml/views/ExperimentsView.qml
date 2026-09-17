@@ -114,7 +114,7 @@ Item {
 
             Panel {
                 Layout.preferredWidth: 306
-                Layout.minimumWidth: 260
+                Layout.minimumWidth: 250
                 Layout.fillHeight: true
 
                 ColumnLayout {
@@ -132,7 +132,9 @@ Item {
                             font.weight: Font.DemiBold
                         }
 
-                        Item { Layout.fillWidth: true }
+                        Item {
+                            Layout.fillWidth: true
+                        }
 
                         Text {
                             text: String(lab.experiments.length)
@@ -233,426 +235,475 @@ Item {
                 }
             }
 
-            ColumnLayout {
+            ScrollView {
+                id: detailsScroll
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: 14
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-                Panel {
-                    Layout.fillWidth: true
-                    implicitHeight: launcherContent.implicitHeight + 32
+                ColumnLayout {
+                    width: detailsScroll.availableWidth
+                    spacing: 14
 
-                    ColumnLayout {
-                        id: launcherContent
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 12
-
-                        RowLayout {
-                            Layout.fillWidth: true
-
-                            Text {
-                                text: "Launch experiment"
-                                color: Theme.text
-                                font.pixelSize: 16
-                                font.weight: Font.DemiBold
-                            }
-
-                            Item { Layout.fillWidth: true }
-
-                            StatusPill {
-                                visible: !lab.hasRunnableTrainer
-                                text: "NO RUNNABLE TRAINER"
-                                tone: "warn"
-                            }
-                        }
-
-                        Text {
-                            visible: !lab.hasRunnableTrainer
-                            Layout.fillWidth: true
-                            text: "This project adapter has no packaged training worker yet. Experimental model classes are not advertised as runnable until they pass through the isolated worker contract."
-                            color: Theme.warnText
-                            font.pixelSize: 12
-                            wrapMode: Text.WordWrap
-                        }
-
-                        Text {
-                            visible: lab.hasRunnableTrainer && lab.frozenDatasets.length === 0
-                            Layout.fillWidth: true
-                            text: "Freeze at least one dataset in Data Studio before training."
-                            color: Theme.warnText
-                            font.pixelSize: 12
-                            wrapMode: Text.WordWrap
-                        }
-
-                        GridLayout {
-                            visible: lab.hasRunnableTrainer
-                            Layout.fillWidth: true
-                            columns: 4
-                            rowSpacing: 8
-                            columnSpacing: 10
-
-                            Text {
-                                text: "Dataset"
-                                color: Theme.muted
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                            }
-                            ComboBox {
-                                id: datasetBox
-                                Layout.fillWidth: true
-                                model: lab.frozenDatasets
-                                textRole: "name"
-                                valueRole: "id"
-                                activeFocusOnTab: true
-                                Accessible.name: "Frozen dataset"
-                            }
-
-                            Text {
-                                text: "Seed"
-                                color: Theme.muted
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                            }
-                            TextField {
-                                id: seedField
-                                Layout.preferredWidth: 110
-                                text: "0"
-                                inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                activeFocusOnTab: true
-                                Accessible.name: "Training seed"
-                            }
-
-                            Text {
-                                text: "Trainer"
-                                color: Theme.muted
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                            }
-                            ComboBox {
-                                id: trainerBox
-                                Layout.fillWidth: true
-                                model: lab.trainerOptions
-                                textRole: "name"
-                                valueRole: "trainerId"
-                                activeFocusOnTab: true
-                                Accessible.name: "Trainer"
-                                onCurrentIndexChanged: root.applyTrainerDefaults()
-                                Component.onCompleted: root.applyTrainerDefaults()
-                            }
-
-                            Text {
-                                text: "Runtime"
-                                color: Theme.muted
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                            }
-                            ComboBox {
-                                id: runtimeBox
-                                Layout.fillWidth: true
-                                model: lab.runtimeOptions
-                                textRole: "name"
-                                valueRole: "id"
-                                activeFocusOnTab: true
-                                Accessible.name: "Runtime pack"
-                            }
-
-                            Text {
-                                text: "Feature dim"
-                                color: Theme.muted
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                            }
-                            TextField {
-                                id: featureDimField
-                                Layout.fillWidth: true
-                                text: "32768"
-                                inputMethodHints: Qt.ImhDigitsOnly
-                                activeFocusOnTab: true
-                                Accessible.name: "Feature dimension"
-                            }
-
-                            Text {
-                                text: "Alpha"
-                                color: Theme.muted
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                            }
-                            TextField {
-                                id: alphaField
-                                Layout.fillWidth: true
-                                text: "0.5"
-                                inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                activeFocusOnTab: true
-                                Accessible.name: "Smoothing alpha"
-                            }
-
-                            Text {
-                                text: "Payload key"
-                                color: Theme.muted
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                            }
-                            TextField {
-                                id: textKeyField
-                                Layout.fillWidth: true
-                                text: "text"
-                                activeFocusOnTab: true
-                                Accessible.name: "Payload text key"
-                            }
-
-                            Text {
-                                text: "Label key"
-                                color: Theme.muted
-                                font.pixelSize: 10
-                                font.weight: Font.Bold
-                            }
-                            TextField {
-                                id: labelKeyField
-                                Layout.fillWidth: true
-                                text: "class"
-                                activeFocusOnTab: true
-                                Accessible.name: "Label key"
-                            }
-                        }
-
-                        RowLayout {
-                            visible: lab.hasRunnableTrainer
-                            Layout.fillWidth: true
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Worker receives TRAIN + optional DEV artifacts only. TEST and REDTEAM paths are withheld by construction."
-                                color: Theme.dim
-                                font.pixelSize: 10
-                                wrapMode: Text.WordWrap
-                            }
-
-                            LabButton {
-                                text: "Create & launch"
-                                primary: true
-                                enabled: lab.frozenDatasets.length > 0 &&
-                                         trainerBox.currentIndex >= 0 &&
-                                         runtimeBox.currentIndex >= 0
-                                onClicked: lab.createAndLaunch(
-                                    String(datasetBox.currentValue),
-                                    String(trainerBox.currentValue),
-                                    String(runtimeBox.currentValue),
-                                    seedField.text,
-                                    featureDimField.text,
-                                    alphaField.text,
-                                    textKeyField.text,
-                                    labelKeyField.text
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Panel {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 12
+                    Panel {
+                        Layout.fillWidth: true
+                        implicitHeight: launcherContent.implicitHeight + 32
 
                         ColumnLayout {
-                            visible: !root.selected.id
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            spacing: 8
-
-                            Item { Layout.fillHeight: true }
-
-                            Text {
-                                Layout.alignment: Qt.AlignHCenter
-                                text: "Select an experiment"
-                                color: Theme.text
-                                font.pixelSize: 18
-                                font.weight: Font.DemiBold
-                            }
-
-                            Text {
-                                Layout.alignment: Qt.AlignHCenter
-                                text: "Progress, metrics and immutable artifact hashes will appear here."
-                                color: Theme.muted
-                                font.pixelSize: 12
-                            }
-
-                            Item { Layout.fillHeight: true }
-                        }
-
-                        ColumnLayout {
-                            visible: !!root.selected.id
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
+                            id: launcherContent
+                            anchors.fill: parent
+                            anchors.margins: 16
                             spacing: 12
 
                             RowLayout {
                                 Layout.fillWidth: true
 
-                                ColumnLayout {
+                                Text {
+                                    text: "Launch experiment"
+                                    color: Theme.text
+                                    font.pixelSize: 16
+                                    font.weight: Font.DemiBold
+                                }
+
+                                Item {
                                     Layout.fillWidth: true
-                                    spacing: 2
+                                }
 
-                                    RowLayout {
-                                        Text {
-                                            text: root.selected.datasetName || ""
-                                            color: Theme.text
-                                            font.pixelSize: 19
-                                            font.weight: Font.DemiBold
-                                        }
+                                StatusPill {
+                                    visible: !lab.hasRunnableTrainer
+                                    text: "NO RUNNABLE TRAINER"
+                                    tone: "warn"
+                                }
+                            }
 
-                                        StatusPill {
-                                            text: root.selected.status || ""
-                                            tone: root.statusTone(root.selected.status || "")
-                                        }
-                                    }
+                            Text {
+                                visible: !lab.hasRunnableTrainer
+                                Layout.fillWidth: true
+                                text: "This project adapter has no packaged training worker yet. Experimental model classes are not advertised as runnable until they pass through the isolated worker contract."
+                                color: Theme.warnText
+                                font.pixelSize: 12
+                                wrapMode: Text.WordWrap
+                            }
 
-                                    Text {
-                                        text: (root.selected.trainerId || "") + "  ·  " +
-                                              (root.selected.runtimeId || "") + "  ·  seed " +
-                                              String(root.selected.seed || 0)
-                                        color: Theme.muted
-                                        font.pixelSize: 11
-                                    }
+                            Text {
+                                visible: lab.hasRunnableTrainer && lab.frozenDatasets.length === 0
+                                Layout.fillWidth: true
+                                text: "Freeze at least one dataset in Data Studio before training."
+                                color: Theme.warnText
+                                font.pixelSize: 12
+                                wrapMode: Text.WordWrap
+                            }
+
+                            GridLayout {
+                                visible: lab.hasRunnableTrainer
+                                Layout.fillWidth: true
+                                columns: 4
+                                rowSpacing: 8
+                                columnSpacing: 10
+
+                                Text {
+                                    text: "Dataset"
+                                    color: Theme.muted
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                }
+
+                                ComboBox {
+                                    id: datasetBox
+                                    Layout.fillWidth: true
+                                    model: lab.frozenDatasets
+                                    textRole: "name"
+                                    valueRole: "id"
+                                    activeFocusOnTab: true
+                                    Accessible.name: "Frozen dataset"
+                                }
+
+                                Text {
+                                    text: "Seed"
+                                    color: Theme.muted
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                }
+
+                                TextField {
+                                    id: seedField
+                                    Layout.preferredWidth: 110
+                                    text: "0"
+                                    inputMethodHints: Qt.ImhFormattedNumbersOnly
+                                    activeFocusOnTab: true
+                                    Accessible.name: "Training seed"
+                                }
+
+                                Text {
+                                    text: "Trainer"
+                                    color: Theme.muted
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                }
+
+                                ComboBox {
+                                    id: trainerBox
+                                    Layout.fillWidth: true
+                                    model: lab.trainerOptions
+                                    textRole: "name"
+                                    valueRole: "trainerId"
+                                    activeFocusOnTab: true
+                                    Accessible.name: "Trainer"
+                                    onCurrentIndexChanged: root.applyTrainerDefaults()
+                                    Component.onCompleted: root.applyTrainerDefaults()
+                                }
+
+                                Text {
+                                    text: "Runtime"
+                                    color: Theme.muted
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                }
+
+                                ComboBox {
+                                    id: runtimeBox
+                                    Layout.fillWidth: true
+                                    model: lab.runtimeOptions
+                                    textRole: "name"
+                                    valueRole: "id"
+                                    activeFocusOnTab: true
+                                    Accessible.name: "Runtime pack"
+                                }
+
+                                Text {
+                                    text: "Feature dim"
+                                    color: Theme.muted
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                }
+
+                                TextField {
+                                    id: featureDimField
+                                    Layout.fillWidth: true
+                                    text: "32768"
+                                    inputMethodHints: Qt.ImhDigitsOnly
+                                    activeFocusOnTab: true
+                                    Accessible.name: "Feature dimension"
+                                }
+
+                                Text {
+                                    text: "Alpha"
+                                    color: Theme.muted
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                }
+
+                                TextField {
+                                    id: alphaField
+                                    Layout.fillWidth: true
+                                    text: "0.5"
+                                    inputMethodHints: Qt.ImhFormattedNumbersOnly
+                                    activeFocusOnTab: true
+                                    Accessible.name: "Smoothing alpha"
+                                }
+
+                                Text {
+                                    text: "Payload key"
+                                    color: Theme.muted
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                }
+
+                                TextField {
+                                    id: textKeyField
+                                    Layout.fillWidth: true
+                                    text: "text"
+                                    activeFocusOnTab: true
+                                    Accessible.name: "Payload text key"
+                                }
+
+                                Text {
+                                    text: "Label key"
+                                    color: Theme.muted
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                }
+
+                                TextField {
+                                    id: labelKeyField
+                                    Layout.fillWidth: true
+                                    text: "class"
+                                    activeFocusOnTab: true
+                                    Accessible.name: "Label key"
+                                }
+                            }
+
+                            RowLayout {
+                                visible: lab.hasRunnableTrainer
+                                Layout.fillWidth: true
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Worker receives TRAIN + optional DEV artifacts only. TEST and REDTEAM paths are withheld by construction."
+                                    color: Theme.dim
+                                    font.pixelSize: 10
+                                    wrapMode: Text.WordWrap
                                 }
 
                                 LabButton {
-                                    visible: lab.canCancelSelected
-                                    text: "Cancel training"
-                                    onClicked: lab.cancelSelected()
+                                    text: "Create & launch"
+                                    primary: true
+                                    enabled: lab.frozenDatasets.length > 0 &&
+                                             trainerBox.currentIndex >= 0 &&
+                                             runtimeBox.currentIndex >= 0
+                                    onClicked: lab.createAndLaunch(
+                                        String(datasetBox.currentValue),
+                                        String(trainerBox.currentValue),
+                                        String(runtimeBox.currentValue),
+                                        seedField.text,
+                                        featureDimField.text,
+                                        alphaField.text,
+                                        textKeyField.text,
+                                        labelKeyField.text
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Panel {
+                        Layout.fillWidth: true
+                        implicitHeight: Math.max(280, experimentDetails.implicitHeight + 32)
+
+                        ColumnLayout {
+                            id: experimentDetails
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            spacing: 12
+
+                            ColumnLayout {
+                                visible: !root.selected.id
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 220
+                                spacing: 8
+
+                                Item {
+                                    Layout.fillHeight: true
+                                }
+
+                                Text {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: "Select an experiment"
+                                    color: Theme.text
+                                    font.pixelSize: 18
+                                    font.weight: Font.DemiBold
+                                }
+
+                                Text {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: "Progress, metrics and immutable artifact hashes will appear here."
+                                    color: Theme.muted
+                                    font.pixelSize: 12
+                                }
+
+                                Item {
+                                    Layout.fillHeight: true
                                 }
                             }
 
                             ColumnLayout {
-                                visible: root.selected.status === "RUNNING" ||
-                                         root.selectedJob.status === "CANCELLING"
+                                visible: !!root.selected.id
                                 Layout.fillWidth: true
-                                spacing: 5
-
-                                ProgressBar {
-                                    Layout.fillWidth: true
-                                    from: 0
-                                    to: 1
-                                    value: Number(root.selectedJob.progress || 0)
-                                    Accessible.name: "Training progress"
-                                }
+                                spacing: 12
 
                                 RowLayout {
                                     Layout.fillWidth: true
 
-                                    Text {
+                                    ColumnLayout {
                                         Layout.fillWidth: true
-                                        text: root.selectedJob.message || "Running"
-                                        color: Theme.muted
-                                        font.pixelSize: 11
-                                    }
+                                        spacing: 2
 
-                                    Text {
-                                        text: Math.round(Number(root.selectedJob.progress || 0) * 100) + "%"
-                                        color: Theme.text2
-                                        font.pixelSize: 11
-                                        font.weight: Font.DemiBold
-                                    }
-                                }
-                            }
+                                        RowLayout {
+                                            Text {
+                                                text: root.selected.datasetName || ""
+                                                color: Theme.text
+                                                font.pixelSize: 19
+                                                font.weight: Font.DemiBold
+                                            }
 
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 1
-                                color: Theme.border
-                            }
-
-                            GridLayout {
-                                Layout.fillWidth: true
-                                columns: 2
-                                rowSpacing: 7
-                                columnSpacing: 14
-
-                                Text { text: "Experiment"; color: Theme.dim; font.pixelSize: 10 }
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: root.selected.id || ""
-                                    color: Theme.text2
-                                    font.pixelSize: 10
-                                    elide: Text.ElideMiddle
-                                }
-                                Text { text: "Created"; color: Theme.dim; font.pixelSize: 10 }
-                                Text { text: root.selected.createdAt || ""; color: Theme.text2; font.pixelSize: 10 }
-                                Text { text: "Model SHA-256"; color: Theme.dim; font.pixelSize: 10 }
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: root.selected.modelDigest || "—"
-                                    color: root.selected.modelDigest ? Theme.goodText : Theme.dim
-                                    font.pixelSize: 10
-                                    elide: Text.ElideMiddle
-                                }
-                                Text { text: "Manifest SHA-256"; color: Theme.dim; font.pixelSize: 10 }
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: root.selected.manifestDigest || "—"
-                                    color: root.selected.manifestDigest ? Theme.goodText : Theme.dim
-                                    font.pixelSize: 10
-                                    elide: Text.ElideMiddle
-                                }
-                            }
-
-                            Text {
-                                text: "Metrics"
-                                color: Theme.text
-                                font.pixelSize: 13
-                                font.weight: Font.DemiBold
-                            }
-
-                            Text {
-                                visible: root.metrics.length === 0
-                                text: root.selected.status === "COMPLETED" ?
-                                          "No metrics were emitted by this trainer." :
-                                          "Metrics are committed only after successful completion."
-                                color: Theme.muted
-                                font.pixelSize: 11
-                            }
-
-                            Flow {
-                                Layout.fillWidth: true
-                                spacing: 8
-
-                                Repeater {
-                                    model: root.metrics
-
-                                    delegate: Rectangle {
-                                        required property var modelData
-                                        width: metricText.implicitWidth + 20
-                                        height: 30
-                                        radius: 7
-                                        color: modelData.veto ? Theme.warnSurface : Theme.surfaceAlt
-                                        border.color: modelData.veto ? Theme.warnBorder : Theme.border
+                                            StatusPill {
+                                                text: root.selected.status || ""
+                                                tone: root.statusTone(root.selected.status || "")
+                                            }
+                                        }
 
                                         Text {
-                                            id: metricText
-                                            anchors.centerIn: parent
-                                            text: modelData.metricId + "  " +
-                                                  Number(modelData.value).toFixed(4)
-                                            color: modelData.veto ? Theme.warnText : Theme.text2
-                                            font.pixelSize: 10
+                                            text: (root.selected.trainerId || "") + "  ·  " +
+                                                  (root.selected.runtimeId || "") + "  ·  seed " +
+                                                  String(root.selected.seed || 0)
+                                            color: Theme.muted
+                                            font.pixelSize: 11
+                                        }
+                                    }
+
+                                    LabButton {
+                                        visible: lab.canCancelSelected
+                                        text: "Cancel training"
+                                        onClicked: lab.cancelSelected()
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    visible: root.selected.status === "RUNNING" ||
+                                             root.selectedJob.status === "CANCELLING"
+                                    Layout.fillWidth: true
+                                    spacing: 5
+
+                                    ProgressBar {
+                                        Layout.fillWidth: true
+                                        from: 0
+                                        to: 1
+                                        value: Number(root.selectedJob.progress || 0)
+                                        Accessible.name: "Training progress"
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: root.selectedJob.message || "Running"
+                                            color: Theme.muted
+                                            font.pixelSize: 11
+                                        }
+
+                                        Text {
+                                            text: Math.round(Number(root.selectedJob.progress || 0) * 100) + "%"
+                                            color: Theme.text2
+                                            font.pixelSize: 11
                                             font.weight: Font.DemiBold
                                         }
                                     }
                                 }
-                            }
 
-                            Item { Layout.fillHeight: true }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 1
+                                    color: Theme.border
+                                }
 
-                            Text {
-                                visible: root.selectedJob.error
-                                Layout.fillWidth: true
-                                text: root.selectedJob.error || ""
-                                color: Theme.badText
-                                font.pixelSize: 11
-                                wrapMode: Text.WordWrap
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    columns: 2
+                                    rowSpacing: 7
+                                    columnSpacing: 14
+
+                                    Text {
+                                        text: "Experiment"
+                                        color: Theme.dim
+                                        font.pixelSize: 10
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: root.selected.id || ""
+                                        color: Theme.text2
+                                        font.pixelSize: 10
+                                        elide: Text.ElideMiddle
+                                    }
+
+                                    Text {
+                                        text: "Created"
+                                        color: Theme.dim
+                                        font.pixelSize: 10
+                                    }
+
+                                    Text {
+                                        text: root.selected.createdAt || ""
+                                        color: Theme.text2
+                                        font.pixelSize: 10
+                                    }
+
+                                    Text {
+                                        text: "Model SHA-256"
+                                        color: Theme.dim
+                                        font.pixelSize: 10
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: root.selected.modelDigest || "—"
+                                        color: root.selected.modelDigest ? Theme.goodText : Theme.dim
+                                        font.pixelSize: 10
+                                        elide: Text.ElideMiddle
+                                    }
+
+                                    Text {
+                                        text: "Manifest SHA-256"
+                                        color: Theme.dim
+                                        font.pixelSize: 10
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: root.selected.manifestDigest || "—"
+                                        color: root.selected.manifestDigest ? Theme.goodText : Theme.dim
+                                        font.pixelSize: 10
+                                        elide: Text.ElideMiddle
+                                    }
+                                }
+
+                                Text {
+                                    text: "Metrics"
+                                    color: Theme.text
+                                    font.pixelSize: 13
+                                    font.weight: Font.DemiBold
+                                }
+
+                                Text {
+                                    visible: root.metrics.length === 0
+                                    text: root.selected.status === "COMPLETED" ?
+                                              "No metrics were emitted by this trainer." :
+                                              "Metrics are committed only after successful completion."
+                                    color: Theme.muted
+                                    font.pixelSize: 11
+                                }
+
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    Repeater {
+                                        model: root.metrics
+
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            width: metricText.implicitWidth + 20
+                                            height: 30
+                                            radius: 7
+                                            color: modelData.veto ?
+                                                       Theme.warnSurface : Theme.surfaceAlt
+                                            border.color: modelData.veto ?
+                                                              Theme.warnBorder : Theme.border
+
+                                            Text {
+                                                id: metricText
+                                                anchors.centerIn: parent
+                                                text: modelData.metricId + "  " +
+                                                      Number(modelData.value).toFixed(4)
+                                                color: modelData.veto ?
+                                                           Theme.warnText : Theme.text2
+                                                font.pixelSize: 10
+                                                font.weight: Font.DemiBold
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    visible: !!root.selectedJob.error
+                                    Layout.fillWidth: true
+                                    text: root.selectedJob.error || ""
+                                    color: Theme.badText
+                                    font.pixelSize: 11
+                                    wrapMode: Text.WordWrap
+                                }
                             }
                         }
                     }

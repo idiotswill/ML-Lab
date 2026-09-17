@@ -40,12 +40,15 @@ def main() -> int:
         if roots:
             roots[0].setProperty("currentPage", 2)
             app.processEvents()
+            roots[0].setProperty("currentPage", 3)
+            app.processEvents()
 
         print(
             json.dumps(
                 {
                     "ok": ok,
                     "experiments_page": 2,
+                    "compare_page": 3,
                     "qml": str(qml_path),
                 },
                 sort_keys=True,

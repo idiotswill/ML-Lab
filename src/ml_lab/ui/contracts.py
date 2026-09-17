@@ -38,20 +38,12 @@ class _ContractCaptureOperation(QRunnable):
     @Slot()
     def run(self) -> None:
         try:
-            descriptor = contract_capture_descriptor_for(self.adapter_id)
-            if descriptor is None:
-                raise RuntimeError(
-                    f"Adapter {self.adapter_id!r} does not declare a capture contract."
-                )
-            workspace = Workspace.open(self.workspace_root)
-            snapshot = ContractSnapshotService(workspace).capture(
+            snapshot = _perform_contract_capture(
+                workspace_root=self.workspace_root,
                 project_id=self.project_id,
-                adapter_id=descriptor.adapter_id,
-                adapter_version=descriptor.adapter_version,
+                adapter_id=self.adapter_id,
                 repository=self.repository,
                 ref=self.ref,
-                contract_version=descriptor.contract_version,
-                files=descriptor.files,
             )
         except Exception as exc:
             self.signals.failed.emit(
@@ -271,6 +263,29 @@ class ContractSnapshotsController(QObject):
             (item for item in self._snapshots() if item.id == self._selected_snapshot_id),
             None,
         )
+
+
+def _perform_contract_capture(
+    *,
+    workspace_root: Path,
+    project_id: str,
+    adapter_id: str,
+    repository: Path,
+    ref: str,
+) -> ContractSnapshot:
+    descriptor = contract_capture_descriptor_for(adapter_id)
+    if descriptor is None:
+        raise RuntimeError(f"Adapter {adapter_id!r} does not declare a capture contract.")
+    workspace = Workspace.open(workspace_root)
+    return ContractSnapshotService(workspace).capture(
+        project_id=project_id,
+        adapter_id=descriptor.adapter_id,
+        adapter_version=descriptor.adapter_version,
+        repository=repository,
+        ref=ref,
+        contract_version=descriptor.contract_version,
+        files=descriptor.files,
+    )
 
 
 def _snapshot_row(item: ContractSnapshot) -> dict[str, object]:

@@ -13,7 +13,7 @@ import tarfile
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Never
+from typing import Any, Never, cast
 
 from pydantic import ValidationError
 
@@ -185,8 +185,7 @@ class PhaseAReferenceValidator:
                 completed = subprocess.run(
                     application_command("--phase-a-validator-child", str(spec_path)),
                     check=False,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+                    capture_output=True,
                     text=True,
                     encoding="utf-8",
                     errors="replace",
@@ -278,10 +277,11 @@ def run_reference_validator_child(spec_path: Path) -> int:
             raise FileNotFoundError(app_root)
         sys.path.insert(0, str(app_root))
         module = importlib.import_module("asterra.semantic_residual")
-        request_type = getattr(module, "ResidualSemanticRequest")
-        decision_type = getattr(module, "ResidualSemanticDecisionV2")
-        residual_error_type = getattr(module, "ResidualSemanticError")
-        run_residual = getattr(module, "run_residual_semantics")
+        namespace = vars(module)
+        request_type = cast(Any, namespace["ResidualSemanticRequest"])
+        decision_type = cast(Any, namespace["ResidualSemanticDecisionV2"])
+        residual_error_type = cast(type[Exception], namespace["ResidualSemanticError"])
+        run_residual = cast(Any, namespace["run_residual_semantics"])
         request_model = request_type.model_validate(request)
         decision_model = decision_type.model_validate(proposal)
 
@@ -299,7 +299,7 @@ def run_reference_validator_child(spec_path: Path) -> int:
                 commit_sha=commit_sha,
                 request_sha=request_sha,
                 proposal_sha=proposal_sha,
-                error_code=str(getattr(exc, "code", type(exc).__name__)),
+                error_code=str(vars(exc).get("code", type(exc).__name__)),
                 error_message=str(exc),
             )
         else:
@@ -342,8 +342,8 @@ def _install_reference_sandbox() -> None:
     def forbidden_network(*_args: object, **_kwargs: object) -> Never:
         raise RuntimeError("ML_LAB_REFERENCE_NETWORK_ACCESS_FORBIDDEN")
 
-    setattr(sqlite3, "connect", forbidden_sqlite)
-    setattr(socket, "create_connection", forbidden_network)
+    sqlite3.connect = cast(Any, forbidden_sqlite)
+    socket.create_connection = cast(Any, forbidden_network)
 
 
 def _child_receipt(
@@ -507,8 +507,7 @@ def _git_text(repo: Path, *args: str) -> str:
     completed = subprocess.run(
         ["git", "-C", str(repo), *args],
         check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",

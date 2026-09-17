@@ -40,6 +40,9 @@ ml_lab = ["ui/qml/**/*.qml", "ui/qml/*.qml", "ui/qml/**/qmldir"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+  "scale: high-volume deterministic scale/stability gates run separately from the fast suite",
+]
 
 [tool.ruff]
 target-version = "py312"

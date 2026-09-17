@@ -27,8 +27,8 @@ def _seed_failures(workspace: Workspace, project_id: str) -> None:
     )
     with workspace.database.transaction() as conn:
         for start in range(0, _FAILURE_COUNT, _BATCH_SIZE):
-            failures = []
-            regressions = []
+            failures: list[tuple[object, ...]] = []
+            regressions: list[tuple[object, ...]] = []
             for index in range(start, min(start + _BATCH_SIZE, _FAILURE_COUNT)):
                 failure_id = f"failure-{index:05d}"
                 severity = (

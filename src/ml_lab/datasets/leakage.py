@@ -5,7 +5,7 @@ import json
 import re
 import unicodedata
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from ml_lab.core.models import DatasetSplit
@@ -121,92 +121,63 @@ def near_signature(payload: object) -> str:
     return f"{signature:016x}"
 
 
-def scan_leakage(examples: list[LeakageExample], *, near_hamming: int = 3) -> LeakageReport:
+def scan_leakage(
+    examples: Iterable[LeakageExample],
+    *,
+    near_hamming: int = 3,
+) -> LeakageReport:
+    """Scan leakage in one pass without materializing the input iterable.
+
+    Indexes grow with the dataset because exact, normalized, lineage, and LSH-near
+    matches must remain discoverable, but callers can stream rows directly from SQLite
+    rather than duplicating the full dataset in a second Python list first.
+    """
     issues: list[LeakageIssue] = []
     emitted: set[tuple[str, str, str]] = set()
-
-    _scan_grouped(
-        examples,
-        key_name="EXACT_DUPLICATE",
-        key_getter=lambda example: example.fingerprint,
-        detail="identical canonical payload hash",
-        issues=issues,
-        emitted=emitted,
-    )
-    _scan_grouped(
-        examples,
-        key_name="NORMALIZED_DUPLICATE",
-        key_getter=lambda example: example.normalized_fingerprint,
-        detail="identical normalized payload hash",
-        issues=issues,
-        emitted=emitted,
-        skip_if_kinds={"EXACT_DUPLICATE"},
-    )
-    _scan_lineage(examples, issues, emitted)
-    _scan_near(examples, near_hamming, issues, emitted)
-
-    issues.sort(key=lambda item: (not item.blocking, item.kind, item.left_id, item.right_id))
-    return LeakageReport(tuple(issues))
-
-
-def _scan_grouped(
-    examples: list[LeakageExample],
-    *,
-    key_name: str,
-    key_getter: Callable[[LeakageExample], str],
-    detail: str,
-    issues: list[LeakageIssue],
-    emitted: set[tuple[str, str, str]],
-    skip_if_kinds: set[str] | None = None,
-) -> None:
-    groups: dict[str, list[LeakageExample]] = defaultdict(list)
-    for example in examples:
-        groups[key_getter(example)].append(example)
-    for group in groups.values():
-        if len(group) < 2:
-            continue
-        for left_index, left in enumerate(group[:-1]):
-            for right in group[left_index + 1 :]:
-                if _pair_seen(left, right, emitted, skip_if_kinds or set()):
-                    continue
-                _emit(key_name, left, right, detail, issues, emitted)
-
-
-def _scan_lineage(
-    examples: list[LeakageExample],
-    issues: list[LeakageIssue],
-    emitted: set[tuple[str, str, str]],
-) -> None:
-    groups: dict[str, list[LeakageExample]] = defaultdict(list)
-    for example in examples:
-        groups[example.lineage_group].append(example)
-    for lineage, group in groups.items():
-        splits = {example.split for example in group}
-        if len(splits) < 2:
-            continue
-        for left_index, left in enumerate(group[:-1]):
-            for right in group[left_index + 1 :]:
-                if left.split == right.split:
-                    continue
-                _emit(
-                    "LINEAGE_LEAKAGE",
-                    left,
-                    right,
-                    f"lineage group {lineage!r} crosses partitions",
-                    issues,
-                    emitted,
-                )
-
-
-def _scan_near(
-    examples: list[LeakageExample],
-    threshold: int,
-    issues: list[LeakageIssue],
-    emitted: set[tuple[str, str, str]],
-) -> None:
+    exact_groups: dict[str, list[LeakageExample]] = defaultdict(list)
+    normalized_groups: dict[str, list[LeakageExample]] = defaultdict(list)
+    lineage_groups: dict[str, list[LeakageExample]] = defaultdict(list)
     bands: dict[tuple[int, int], list[LeakageExample]] = defaultdict(list)
-    compared: set[tuple[str, str]] = set()
+    compared_near: set[tuple[str, str]] = set()
+
     for example in examples:
+        for candidate in exact_groups[example.fingerprint]:
+            _emit(
+                "EXACT_DUPLICATE",
+                candidate,
+                example,
+                "identical canonical payload hash",
+                issues,
+                emitted,
+            )
+        exact_groups[example.fingerprint].append(example)
+
+        for candidate in normalized_groups[example.normalized_fingerprint]:
+            if _pair_seen(example, candidate, emitted, {"EXACT_DUPLICATE"}):
+                continue
+            _emit(
+                "NORMALIZED_DUPLICATE",
+                candidate,
+                example,
+                "identical normalized payload hash",
+                issues,
+                emitted,
+            )
+        normalized_groups[example.normalized_fingerprint].append(example)
+
+        for candidate in lineage_groups[example.lineage_group]:
+            if candidate.split == example.split:
+                continue
+            _emit(
+                "LINEAGE_LEAKAGE",
+                candidate,
+                example,
+                f"lineage group {example.lineage_group!r} crosses partitions",
+                issues,
+                emitted,
+            )
+        lineage_groups[example.lineage_group].append(example)
+
         signature = int(example.near_signature, 16)
         candidates: dict[str, LeakageExample] = {}
         for band in range(4):
@@ -216,9 +187,9 @@ def _scan_near(
         for candidate in candidates.values():
             first, second = sorted((example.example_id, candidate.example_id))
             pair = (first, second)
-            if pair in compared:
+            if pair in compared_near:
                 continue
-            compared.add(pair)
+            compared_near.add(pair)
             if _pair_seen(
                 example,
                 candidate,
@@ -227,18 +198,21 @@ def _scan_near(
             ):
                 continue
             distance = (signature ^ int(candidate.near_signature, 16)).bit_count()
-            if distance <= threshold:
+            if distance <= near_hamming:
                 _emit(
                     "NEAR_DUPLICATE",
                     candidate,
                     example,
-                    f"64-bit SimHash Hamming distance {distance} <= {threshold}",
+                    f"64-bit SimHash Hamming distance {distance} <= {near_hamming}",
                     issues,
                     emitted,
                 )
         for band in range(4):
             value = (signature >> (band * 16)) & 0xFFFF
             bands[(band, value)].append(example)
+
+    issues.sort(key=lambda item: (not item.blocking, item.kind, item.left_id, item.right_id))
+    return LeakageReport(tuple(issues))
 
 
 def _pair_seen(

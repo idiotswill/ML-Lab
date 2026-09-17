@@ -279,13 +279,21 @@ def validate_loopback_endpoint(endpoint: str) -> str:
     hostname = parsed.hostname
     if hostname is None or not _is_loopback_host(hostname):
         raise ValueError("Local provider endpoint must target localhost or a loopback IP.")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("Local provider endpoint has an invalid port.") from exc
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError("Local provider endpoint has an invalid port.")
     if not parsed.path or parsed.path == "/":
         raise ValueError("Local provider endpoint must include the chat-completions path.")
+    if parsed.params or parsed.query or parsed.fragment:
+        raise ValueError("Local provider endpoint must not contain params, query, or fragment.")
     return clean
 
 
 def _install_provider_sandbox() -> None:
-    original_create_connection = socket.create_connection
+    original_connection = cast(Any, socket.create_connection)
 
     def forbidden_sqlite(*_args: object, **_kwargs: object) -> Never:
         raise RuntimeError("ML_LAB_PROVIDER_DB_ACCESS_FORBIDDEN")
@@ -296,7 +304,7 @@ def _install_provider_sandbox() -> None:
         host = str(address[0])
         if not _is_loopback_host(host):
             raise RuntimeError("ML_LAB_PROVIDER_NON_LOOPBACK_NETWORK_FORBIDDEN")
-        return original_create_connection(cast(Any, address), *args, **kwargs)
+        return cast(socket.socket, original_connection(address, *args, **kwargs))
 
     sqlite3.connect = cast(Any, forbidden_sqlite)
     socket.create_connection = cast(Any, loopback_connection)
@@ -409,13 +417,15 @@ def _validate_provider_receipt(
 def _write_child_bootstrap_error(spec_path: Path, exc: Exception) -> int:
     try:
         spec = _read_object(spec_path)
-        receipt_path = Path(str(spec.get("receipt_path", "")))
-        if not str(receipt_path):
+        receipt_raw = spec.get("receipt_path")
+        if not isinstance(receipt_raw, str) or not receipt_raw.strip():
             return 4
+        receipt_path = Path(receipt_raw)
         commit_sha = str(spec.get("commit_sha", "UNKNOWN"))
         model = str(spec.get("model", "UNKNOWN"))
         endpoint = str(spec.get("endpoint", "UNKNOWN"))
-        request_path = Path(str(spec.get("request_path", "")))
+        request_raw = spec.get("request_path")
+        request_path = Path(request_raw) if isinstance(request_raw, str) else Path()
         request = _read_json_value(request_path) if request_path.is_file() else None
         request_sha = _sha256_json(request) if request is not None else "UNKNOWN"
         receipt_path.write_text(

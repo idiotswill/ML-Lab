@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
-from ml_lab.core.models import DatasetState, ExperimentRecord, ExperimentStatus, JobRecord
+from ml_lab.core.models import (
+    DatasetState,
+    ExperimentRecord,
+    ExperimentStatus,
+    JobRecord,
+    JobStatus,
+)
 from ml_lab.datasets.service import DatasetService
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.jobs.manager import JobManager
@@ -61,7 +66,9 @@ class ExperimentsController(QObject):
 
     @Property(bool, notify=changed)
     def hasRunnableTrainer(self) -> bool:
-        return bool(training_options(self._adapter_id)) if self.hasProject else False
+        if self._workspace is None or not self._project_id:
+            return False
+        return bool(training_options(self._adapter_id))
 
     @Property(list, notify=changed)
     def frozenDatasets(self) -> list[dict[str, object]]:
@@ -81,13 +88,13 @@ class ExperimentsController(QObject):
 
     @Property(list, notify=changed)
     def trainerOptions(self) -> list[dict[str, object]]:
-        if not self.hasProject:
+        if self._workspace is None or not self._project_id:
             return []
         return [_training_option_dict(item) for item in training_options(self._adapter_id)]
 
     @Property(list, notify=changed)
     def runtimeOptions(self) -> list[dict[str, str]]:
-        if not self.hasProject:
+        if self._workspace is None or not self._project_id:
             return []
         seen: set[str] = set()
         result: list[dict[str, str]] = []
@@ -122,21 +129,12 @@ class ExperimentsController(QObject):
         item = self._selected_experiment()
         if item is None:
             return {}
-        dataset_name = self._dataset_name(item.dataset_id)
-        return _experiment_dict(item, dataset_name)
+        return _experiment_dict(item, self._dataset_name(item.dataset_id))
 
     @Property(dict, notify=changed)
     def selectedJob(self) -> dict[str, object]:
-        if not self._jobs or not self._selected_experiment_id:
-            return {}
-        job_id = self._job_ids.get(self._selected_experiment_id)
-        if not job_id:
-            return {}
-        try:
-            job = self._jobs.get(job_id)
-        except KeyError:
-            return {}
-        return _job_dict(job)
+        job = self._selected_job()
+        return _job_dict(job) if job is not None else {}
 
     @Property(list, notify=changed)
     def selectedMetrics(self) -> list[dict[str, object]]:
@@ -159,8 +157,10 @@ class ExperimentsController(QObject):
         item = self._selected_experiment()
         if item is None or item.status is not ExperimentStatus.RUNNING:
             return False
-        job = self.selectedJob
-        return str(job.get("status", "")) in {"QUEUED", "RUNNING", "CANCELLING"}
+        job = self._selected_job()
+        if job is None:
+            return False
+        return job.status in {JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.CANCELLING}
 
     @Slot(str, str, str, str, str, str, str, str)
     def createAndLaunch(
@@ -282,7 +282,7 @@ class ExperimentsController(QObject):
                     continue
                 self._job_ids[item.id] = job_id
             try:
-                before = self._job_signature(job_id)
+                before = self._job_signature(job_id, item.status)
                 state = self._training.refresh_job(item.id, job_id)
                 after = (
                     state.job.status.value,
@@ -334,6 +334,17 @@ class ExperimentsController(QObject):
             return None
         return item
 
+    def _selected_job(self) -> JobRecord | None:
+        if not self._jobs or not self._selected_experiment_id:
+            return None
+        job_id = self._job_ids.get(self._selected_experiment_id)
+        if not job_id:
+            return None
+        try:
+            return self._jobs.get(job_id)
+        except KeyError:
+            return None
+
     def _dataset_name(self, dataset_id: str) -> str:
         if not self._workspace:
             return "Unknown dataset"
@@ -352,13 +363,20 @@ class ExperimentsController(QObject):
                 return option
         raise ValueError("Selected trainer is not runnable for this project adapter.")
 
-    def _job_signature(self, job_id: str) -> tuple[str, float, str, str]:
+    def _job_signature(
+        self,
+        job_id: str,
+        experiment_status: ExperimentStatus,
+    ) -> tuple[str, float, str, str]:
         if not self._jobs:
-            return ("", 0.0, "", "")
+            return ("", 0.0, "", experiment_status.value)
         job = self._jobs.get(job_id)
-        experiment = self._selected_experiment()
-        experiment_status = experiment.status.value if experiment else ""
-        return (job.status.value, job.progress, job.message, experiment_status)
+        return (
+            job.status.value,
+            job.progress,
+            job.message,
+            experiment_status.value,
+        )
 
 
 def _training_option_dict(item: TrainingOption) -> dict[str, object]:
@@ -375,8 +393,6 @@ def _training_option_dict(item: TrainingOption) -> dict[str, object]:
 
 
 def _experiment_dict(item: ExperimentRecord, dataset_name: str) -> dict[str, object]:
-    value = asdict(item)
-    value["status"] = item.status.value
     config = json.loads(item.config_json)
     return {
         "id": item.id,

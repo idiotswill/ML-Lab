@@ -48,6 +48,8 @@ class ModelRegistryService:
             raise RuntimeError("Only completed experiments can register models.")
         if experiment.model_artifact_digest is None:
             raise RuntimeError("Experiment has no model artifact to register.")
+        if self.find_by_experiment(experiment.id) is not None:
+            raise RuntimeError("Experiment model is already registered.")
         self.artifacts.resolve(experiment.model_artifact_digest)
         now = utc_now_iso()
         compatibility_json = canonical_json(dict(compatibility or {}))
@@ -115,6 +117,15 @@ class ModelRegistryService:
             raise KeyError(f"Unknown model {model_id}")
         return _model_from_row(row)
 
+    def find_by_experiment(self, experiment_id: str) -> RegisteredModel | None:
+        with self.database.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM models WHERE experiment_id=? "
+                "ORDER BY created_at,id LIMIT 1",
+                (experiment_id,),
+            ).fetchone()
+        return _model_from_row(row) if row is not None else None
+
     def list_for_project(
         self,
         project_id: str,
@@ -130,6 +141,19 @@ class ModelRegistryService:
                 (project_id, limit),
             ).fetchall()
         return [_model_from_row(row) for row in rows]
+
+    def next_stage(self, model_id: str) -> ModelStage | None:
+        model = self.get(model_id)
+        return _ALLOWED_NEXT.get(model.stage)
+
+    def promotion_blockers(self, model_id: str) -> tuple[str, ...]:
+        model = self.get(model_id)
+        next_stage = _ALLOWED_NEXT.get(model.stage)
+        if next_stage is None:
+            return ("No further ordinary Lab promotion stage is available.",)
+        if next_stage is not ModelStage.RELEASE_CANDIDATE:
+            return ()
+        return self._release_candidate_blockers(model)
 
     def promote(
         self,
@@ -188,23 +212,32 @@ class ModelRegistryService:
             for row in rows
         ]
 
-    def _assert_release_candidate_eligible(self, model: RegisteredModel) -> None:
+    def _release_candidate_blockers(
+        self,
+        model: RegisteredModel,
+    ) -> tuple[str, ...]:
+        blockers: list[str] = []
         metrics = self.experiments.metrics(model.experiment_id)
         failing_vetoes = [
             metric for metric in metrics if metric.veto and metric.value != 0.0
         ]
         if failing_vetoes:
             names = ", ".join(metric.metric_id for metric in failing_vetoes)
-            raise RuntimeError(
-                f"Release candidate blocked by non-zero veto metric(s): {names}."
-            )
+            blockers.append(f"Non-zero veto metric(s): {names}.")
         open_vetoes = self.failures.open_veto_count(
             experiment_id=model.experiment_id
         )
         if open_vetoes:
+            blockers.append(
+                f"{open_vetoes} unresolved veto failure record(s)."
+            )
+        return tuple(blockers)
+
+    def _assert_release_candidate_eligible(self, model: RegisteredModel) -> None:
+        blockers = self._release_candidate_blockers(model)
+        if blockers:
             raise RuntimeError(
-                f"Release candidate blocked by {open_vetoes} unresolved veto "
-                "failure record(s)."
+                "Release candidate blocked by " + " ".join(blockers)
             )
 
 

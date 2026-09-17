@@ -22,9 +22,43 @@ SPARSE_RUNTIME_PACK_ID = "builtin-python"
 
 
 @dataclass(frozen=True, slots=True)
+class TrainingOption:
+    trainer_id: str
+    display_name: str
+    runtime_pack_id: str
+    runtime_display_name: str
+    adapter_ids: tuple[str, ...]
+    default_feature_dim: int = 32768
+    default_alpha: float = 0.5
+    default_text_key: str = "text"
+    default_label_key: str = "class"
+
+
+@dataclass(frozen=True, slots=True)
 class TrainingState:
     experiment: ExperimentRecord
     job: JobRecord
+
+
+_BUILTIN_TRAINING_OPTIONS = (
+    TrainingOption(
+        trainer_id=SPARSE_TRAINER_ID,
+        display_name="Sparse Naive Bayes (CPU)",
+        runtime_pack_id=SPARSE_RUNTIME_PACK_ID,
+        runtime_display_name="Built-in Sparse CPU Runtime",
+        adapter_ids=("generic",),
+    ),
+)
+
+
+def training_options(adapter_id: str) -> tuple[TrainingOption, ...]:
+    """Return trainers that are both packaged and compatible with this adapter.
+
+    Model implementations that are not wired through the isolated worker boundary are
+    intentionally absent. The UI must never imply that an experimental Python class is
+    a runnable trainer merely because it exists in the source tree.
+    """
+    return tuple(option for option in _BUILTIN_TRAINING_OPTIONS if adapter_id in option.adapter_ids)
 
 
 class TrainingService:
@@ -40,6 +74,12 @@ class TrainingService:
         )
         self._owns_jobs = jobs is None
 
+    def launch(self, experiment_id: str) -> TrainingState:
+        experiment = self.experiments.get(experiment_id)
+        if experiment.trainer_id == SPARSE_TRAINER_ID:
+            return self.launch_sparse(experiment_id)
+        raise ValueError(f"No packaged launcher for trainer {experiment.trainer_id!r}.")
+
     def launch_sparse(self, experiment_id: str) -> TrainingState:
         experiment = self.experiments.get(experiment_id)
         if experiment.status is not ExperimentStatus.QUEUED:
@@ -49,6 +89,10 @@ class TrainingService:
         if experiment.trainer_id != SPARSE_TRAINER_ID:
             raise ValueError(
                 f"Sparse launcher requires trainer_id={SPARSE_TRAINER_ID!r}."
+            )
+        if experiment.runtime_pack_id != SPARSE_RUNTIME_PACK_ID:
+            raise ValueError(
+                f"Sparse launcher requires runtime_pack_id={SPARSE_RUNTIME_PACK_ID!r}."
             )
         spec = self.experiments.trainer_job_spec(experiment_id, include_dev=True)
         raw_handles = spec.get("input_partitions")
@@ -92,8 +136,12 @@ class TrainingService:
         return TrainingState(self.experiments.get(experiment.id), job)
 
     def refresh(self, experiment_id: str) -> TrainingState:
-        experiment = self.experiments.get(experiment_id)
         job = self.job_for_experiment(experiment_id)
+        return self.refresh_job(experiment_id, job.id)
+
+    def refresh_job(self, experiment_id: str, job_id: str) -> TrainingState:
+        experiment = self.experiments.get(experiment_id)
+        job = self.jobs.get(job_id)
         if job.status not in TERMINAL_JOB_STATUSES:
             return TrainingState(experiment, job)
         if experiment.status in {
@@ -119,6 +167,10 @@ class TrainingService:
 
     def cancel(self, experiment_id: str) -> TrainingState:
         job = self.job_for_experiment(experiment_id)
+        return self.cancel_job(experiment_id, job.id)
+
+    def cancel_job(self, experiment_id: str, job_id: str) -> TrainingState:
+        job = self.jobs.get(job_id)
         self.jobs.cancel(job.id)
         return TrainingState(self.experiments.get(experiment_id), self.jobs.get(job.id))
 

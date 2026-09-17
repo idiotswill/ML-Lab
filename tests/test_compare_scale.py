@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from PySide6.QtCore import QCoreApplication
+
 from ml_lab.core.models import ExperimentStatus
 from ml_lab.datasets.service import DatasetService
 from ml_lab.storage.workspace import Workspace
@@ -53,6 +55,8 @@ def test_compare_pages_one_thousand_completed_experiments_without_eager_loading(
     tmp_path: Path,
 ) -> None:
     workspace, project_id = _workspace_with_completed_experiments(tmp_path)
+    app = QCoreApplication.instance() or QCoreApplication([])
+    assert app is not None
     controller = CompareController()
     controller.bind_project(workspace, project_id, "generic")
     try:
@@ -67,10 +71,12 @@ def test_compare_pages_one_thousand_completed_experiments_without_eager_loading(
         assert first_page[-1]["id"] == "exp-0900"
 
         controller.selectExperiment("exp-0999")
+        assert controller.selectedExperimentId == "exp-0999"
         assert controller.selectedExperiment["id"] == "exp-0999"
 
         controller.nextExperimentPage()
         assert controller.experimentPageNumber == 2
+        assert controller.selectedExperimentId == ""
         assert controller.selectedExperiment == {}
         second_page = controller.comparisonRows
         assert len(second_page) == 100
@@ -79,6 +85,7 @@ def test_compare_pages_one_thousand_completed_experiments_without_eager_loading(
 
         controller.selectExperiment("exp-0500")
         assert controller.experimentPageNumber == 5
+        assert controller.selectedExperimentId == "exp-0500"
         assert controller.selectedExperiment["id"] == "exp-0500"
 
         for _ in range(5):

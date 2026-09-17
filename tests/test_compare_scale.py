@@ -77,7 +77,11 @@ def test_compare_pages_one_thousand_completed_experiments_without_eager_loading(
         assert second_page[0]["id"] == "exp-0899"
         assert second_page[-1]["id"] == "exp-0800"
 
-        for _ in range(8):
+        controller.selectExperiment("exp-0500")
+        assert controller.experimentPageNumber == 5
+        assert controller.selectedExperiment["id"] == "exp-0500"
+
+        for _ in range(5):
             controller.nextExperimentPage()
         assert controller.experimentPageNumber == 10
         assert controller.canNextExperimentPage is False

@@ -6,7 +6,12 @@ from pathlib import Path
 from PySide6.QtCore import Property, QObject, QRunnable, QThreadPool, Signal, Slot
 
 from ml_lab.adapters.phase_a import PHASE_A_ADAPTER_ID
+from ml_lab.adapters.phase_a_provider import validate_loopback_endpoint
 from ml_lab.baselines.phase_a import phase_a_baseline_options, run_phase_a_baseline
+from ml_lab.baselines.phase_a_provider import (
+    completed_local_provider_baseline,
+    run_phase_a_local_provider_baseline,
+)
 from ml_lab.core.models import DatasetSplit, ExperimentRecord, ExperimentStatus
 from ml_lab.evaluation.phase_a_metrics import (
     PhaseAProviderReference,
@@ -16,6 +21,9 @@ from ml_lab.evaluation.phase_a_metrics import (
 )
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.storage.workspace import Workspace
+
+_DEFAULT_LOCAL_MODEL = "qwen3.5:4b-q4_K_M"
+_DEFAULT_LOCAL_ENDPOINT = "http://127.0.0.1:11434/v1/chat/completions"
 
 
 class _ScienceSignals(QObject):
@@ -131,6 +139,62 @@ class _BaselineOperation(QRunnable):
             )
 
 
+class _ProviderOperation(QRunnable):
+    def __init__(
+        self,
+        *,
+        context_token: int,
+        workspace_root: Path,
+        project_id: str,
+        dataset_id: str,
+        snapshot_id: str,
+        model: str,
+        endpoint: str,
+        timeout_seconds: float,
+        cancel_event: threading.Event,
+    ) -> None:
+        super().__init__()
+        self.context_token = context_token
+        self.workspace_root = workspace_root
+        self.project_id = project_id
+        self.dataset_id = dataset_id
+        self.snapshot_id = snapshot_id
+        self.model = model
+        self.endpoint = endpoint
+        self.timeout_seconds = timeout_seconds
+        self.cancel_event = cancel_event
+        self.signals = _BaselineSignals()
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            workspace = Workspace.open(self.workspace_root)
+            result = run_phase_a_local_provider_baseline(
+                workspace,
+                project_id=self.project_id,
+                dataset_id=self.dataset_id,
+                contract_snapshot_id=self.snapshot_id,
+                model=self.model,
+                endpoint=self.endpoint,
+                timeout_seconds=self.timeout_seconds,
+                cancelled=self.cancel_event.is_set,
+            )
+        except InterruptedError:
+            self.signals.cancelled.emit(self.context_token, "local-provider")
+        except Exception as exc:
+            self.signals.failed.emit(
+                self.context_token,
+                "local-provider",
+                f"{type(exc).__name__}: {exc}",
+            )
+        else:
+            self.signals.completed.emit(
+                self.context_token,
+                "local-provider",
+                result.experiment.id,
+            )
+
+
 class PhaseAScienceController(QObject):
     changed = Signal()
     baselineReady = Signal(str)
@@ -151,6 +215,9 @@ class PhaseAScienceController(QObject):
         self._busy_message = ""
         self._metrics: list[dict[str, object]] = []
         self._provider: dict[str, object] = {}
+        self._local_model = _DEFAULT_LOCAL_MODEL
+        self._local_endpoint = _DEFAULT_LOCAL_ENDPOINT
+        self._local_timeout_seconds = 120.0
         self._cancel_event: threading.Event | None = None
         self._analysis_pool = QThreadPool(self)
         self._analysis_pool.setMaxThreadCount(1)
@@ -225,6 +292,47 @@ class PhaseAScienceController(QObject):
     def providerReference(self) -> dict[str, object]:
         return dict(self._provider)
 
+    @Property(str, notify=changed)
+    def providerModel(self) -> str:
+        return self._local_model
+
+    @Property(str, notify=changed)
+    def providerEndpoint(self) -> str:
+        return self._local_endpoint
+
+    @Property(float, notify=changed)
+    def providerTimeoutSeconds(self) -> float:
+        return self._local_timeout_seconds
+
+    @Property(bool, notify=changed)
+    def providerConfigValid(self) -> bool:
+        try:
+            validate_loopback_endpoint(self._local_endpoint)
+        except ValueError:
+            return False
+        return bool(self._local_model.strip()) and 1.0 <= self._local_timeout_seconds <= 900.0
+
+    @Property(str, notify=changed)
+    def providerExistingExperimentId(self) -> str:
+        record = self._selected_record()
+        if (
+            not self._workspace
+            or record is None
+            or record.contract_snapshot_id is None
+            or not self.providerConfigValid
+        ):
+            return ""
+        existing = completed_local_provider_baseline(
+            self._workspace,
+            project_id=self._project_id,
+            dataset_id=record.dataset_id,
+            contract_snapshot_id=record.contract_snapshot_id,
+            model=self._local_model,
+            endpoint=self._local_endpoint,
+            timeout_seconds=self._local_timeout_seconds,
+        )
+        return existing or ""
+
     @Property(list, notify=changed)
     def baselineOptions(self) -> list[dict[str, object]]:
         if not self._workspace or self._adapter_id != PHASE_A_ADAPTER_ID:
@@ -278,6 +386,21 @@ class PhaseAScienceController(QObject):
         self._split = selected_split
         self._start_analysis(record)
 
+    @Slot(str)
+    def setProviderModel(self, model: str) -> None:
+        self._local_model = model.strip()
+        self.changed.emit()
+
+    @Slot(str)
+    def setProviderEndpoint(self, endpoint: str) -> None:
+        self._local_endpoint = endpoint.strip()
+        self.changed.emit()
+
+    @Slot(float)
+    def setProviderTimeoutSeconds(self, seconds: float) -> None:
+        self._local_timeout_seconds = max(1.0, min(float(seconds), 900.0))
+        self.changed.emit()
+
     @Slot()
     def refresh(self) -> None:
         record = self._selected_record()
@@ -317,6 +440,49 @@ class PhaseAScienceController(QObject):
             dataset_id=record.dataset_id,
             snapshot_id=record.contract_snapshot_id,
             baseline_id=baseline_id,
+            cancel_event=self._cancel_event,
+        )
+        operation.signals.completed.connect(self._baseline_completed)
+        operation.signals.cancelled.connect(self._baseline_cancelled)
+        operation.signals.failed.connect(self._baseline_failed)
+        self._baseline_pool.start(operation)
+        self.changed.emit()
+
+    @Slot()
+    def runProviderBaseline(self) -> None:
+        if not self._workspace or self._baseline_busy:
+            return
+        record = self._selected_record()
+        if record is None or record.contract_snapshot_id is None:
+            self.operationFailed.emit(
+                "Local provider error",
+                "Select a completed Phase A experiment pinned to a contract snapshot.",
+            )
+            return
+        if not self.providerConfigValid:
+            self.operationFailed.emit(
+                "Local provider error",
+                "Use a non-empty model, an http:// loopback endpoint, and a valid timeout.",
+            )
+            return
+        existing_id = self.providerExistingExperimentId
+        if existing_id:
+            self.baselineReady.emit(existing_id)
+            self.operationCompleted.emit("Existing immutable local-provider evidence selected")
+            return
+
+        self._baseline_busy = True
+        self._busy_message = "Running local provider on protected TEST/REDTEAM…"
+        self._cancel_event = threading.Event()
+        operation = _ProviderOperation(
+            context_token=self._context_token,
+            workspace_root=self._workspace.root,
+            project_id=self._project_id,
+            dataset_id=record.dataset_id,
+            snapshot_id=record.contract_snapshot_id,
+            model=self._local_model,
+            endpoint=self._local_endpoint,
+            timeout_seconds=self._local_timeout_seconds,
             cancel_event=self._cancel_event,
         )
         operation.signals.completed.connect(self._baseline_completed)

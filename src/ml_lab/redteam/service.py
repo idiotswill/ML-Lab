@@ -149,6 +149,33 @@ class RedTeamService:
             raise KeyError(f"Unknown red-team run {run_id}")
         return _run_from_row(row)
 
+    def page_for_project(
+        self,
+        project_id: str,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> list[RedTeamRunRecord]:
+        if offset < 0:
+            raise ValueError("offset must be >= 0")
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        with self.database.connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM redteam_runs WHERE project_id=? "
+                "ORDER BY created_at DESC,id LIMIT ? OFFSET ?",
+                (project_id, limit, offset),
+            ).fetchall()
+        return [_run_from_row(row) for row in rows]
+
+    def count_for_project(self, project_id: str) -> int:
+        with self.database.connection() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM redteam_runs WHERE project_id=?",
+                (project_id,),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
     def generated_cases(self, run_id: str) -> list[dict[str, object]]:
         run = self.get(run_id)
         if run.manifest_artifact_digest is None:

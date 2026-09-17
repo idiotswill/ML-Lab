@@ -6,7 +6,12 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QRunnable, QThreadPool, Signal, Slot
 
-from ml_lab.core.models import ExperimentRecord, ExperimentStatus, FailureRecord, FailureSeverity
+from ml_lab.core.models import (
+    ExperimentRecord,
+    ExperimentStatus,
+    FailureRecord,
+    FailureSeverity,
+)
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.failures.service import FailureService
 from ml_lab.redteam.generic import run_generic_sparse_redteam
@@ -91,7 +96,12 @@ class RedTeamFailuresController(QObject):
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(1)
 
-    def bind_project(self, workspace: Workspace, project_id: str, adapter_id: str) -> None:
+    def bind_project(
+        self,
+        workspace: Workspace,
+        project_id: str,
+        adapter_id: str,
+    ) -> None:
         self._cancel_active()
         self._context_token += 1
         self._workspace = workspace
@@ -155,8 +165,8 @@ class RedTeamFailuresController(QObject):
             return "Run the packaged deterministic generic text-perturbation suite."
         if self._adapter_id != "generic":
             return (
-                "No adapter-supplied runnable red-team suite is installed for this project. "
-                "Existing failure and run evidence remains browsable."
+                "No adapter-supplied runnable red-team suite is installed for this "
+                "project. Existing failure and run evidence remains browsable."
             )
         return "No packaged red-team runner is compatible with this experiment."
 
@@ -166,9 +176,7 @@ class RedTeamFailuresController(QObject):
 
     @Property(int, notify=changed)
     def runTotal(self) -> int:
-        if not self._workspace or not self._project_id:
-            return 0
-        return RedTeamService(self._workspace).count_for_project(self._project_id)
+        return self._run_count()
 
     @Property(int, notify=changed)
     def runPageNumber(self) -> int:
@@ -180,7 +188,7 @@ class RedTeamFailuresController(QObject):
 
     @Property(bool, notify=changed)
     def canNextRunPage(self) -> bool:
-        return self._run_offset + self._page_size < self.runTotal
+        return self._run_offset + self._page_size < self._run_count()
 
     @Property(dict, notify=changed)
     def selectedRun(self) -> dict[str, object]:
@@ -297,7 +305,7 @@ class RedTeamFailuresController(QObject):
 
     @Slot()
     def nextRunPage(self) -> None:
-        if self._run_offset + self._page_size < self.runTotal:
+        if self._run_offset + self._page_size < self._run_count():
             self._run_offset += self._page_size
             self._selected_run_id = ""
             self.changed.emit()
@@ -305,8 +313,16 @@ class RedTeamFailuresController(QObject):
     @Slot(str)
     def setFailureSeverity(self, severity: str) -> None:
         normalized = severity.strip().upper()
-        if normalized not in {"ALL", FailureSeverity.VETO.value, FailureSeverity.NON_VETO.value}:
-            self.operationFailed.emit("Failure filter", f"Unsupported severity: {severity}")
+        allowed = {
+            "ALL",
+            FailureSeverity.VETO.value,
+            FailureSeverity.NON_VETO.value,
+        }
+        if normalized not in allowed:
+            self.operationFailed.emit(
+                "Failure filter",
+                f"Unsupported severity: {severity}",
+            )
             return
         self._failure_severity = normalized
         self._failure_offset = 0
@@ -346,10 +362,18 @@ class RedTeamFailuresController(QObject):
             self.operationFailed.emit("Regression promotion", str(exc))
             return
         self.changed.emit()
-        self.operationCompleted.emit("Failure promoted to immutable regression membership")
+        self.operationCompleted.emit(
+            "Failure promoted to immutable regression membership"
+        )
 
     @Slot(int, str, int, int)
-    def _run_completed(self, token: int, run_id: str, generated: int, failures: int) -> None:
+    def _run_completed(
+        self,
+        token: int,
+        run_id: str,
+        generated: int,
+        failures: int,
+    ) -> None:
         if token != self._context_token:
             return
         self._busy = False
@@ -359,7 +383,8 @@ class RedTeamFailuresController(QObject):
         self._selected_run_id = run_id
         self.changed.emit()
         self.operationCompleted.emit(
-            f"Red-team run complete: {generated} generated case(s), {failures} failure(s)"
+            f"Red-team run complete: {generated} generated case(s), "
+            f"{failures} failure(s)"
         )
 
     @Slot(int, str)
@@ -370,7 +395,8 @@ class RedTeamFailuresController(QObject):
         self._cancel_event = None
         self.changed.emit()
         self.operationCompleted.emit(
-            f"Red-team scoring cancelled for experiment {experiment_id[:8]}; preserved evidence remains visible"
+            f"Red-team scoring cancelled for experiment {experiment_id[:8]}; "
+            "preserved evidence remains visible"
         )
 
     @Slot(int, str)
@@ -392,7 +418,9 @@ class RedTeamFailuresController(QObject):
             return []
         return [
             item
-            for item in ExperimentService(self._workspace).list_for_project(self._project_id)
+            for item in ExperimentService(self._workspace).list_for_project(
+                self._project_id
+            )
             if item.status is ExperimentStatus.COMPLETED
         ]
 
@@ -417,7 +445,10 @@ class RedTeamFailuresController(QObject):
         )
 
     def _can_run_redteam(self) -> bool:
-        return not self._busy and (record := self._selected_experiment()) is not None and self._can_run_record(record)
+        if self._busy:
+            return False
+        record = self._selected_experiment()
+        return record is not None and self._can_run_record(record)
 
     def _current_runs(self) -> list[RedTeamRunRecord]:
         if not self._workspace or not self._project_id:
@@ -427,6 +458,11 @@ class RedTeamFailuresController(QObject):
             offset=self._run_offset,
             limit=self._page_size,
         )
+
+    def _run_count(self) -> int:
+        if not self._workspace or not self._project_id:
+            return 0
+        return RedTeamService(self._workspace).count_for_project(self._project_id)
 
     def _failure_severity_value(self) -> FailureSeverity | None:
         if self._failure_severity == "ALL":
@@ -495,7 +531,11 @@ def _failure_row(item: FailureRecord) -> dict[str, object]:
     }
 
 
-def _failure_detail(item: FailureRecord, *, is_regression: bool) -> dict[str, object]:
+def _failure_detail(
+    item: FailureRecord,
+    *,
+    is_regression: bool,
+) -> dict[str, object]:
     return {
         **_failure_row(item),
         "experimentId": item.experiment_id or "",

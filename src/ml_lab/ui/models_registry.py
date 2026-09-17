@@ -13,6 +13,7 @@ from ml_lab.core.models import (
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.models.registry import ModelRegistryService
 from ml_lab.storage.workspace import Workspace
+from ml_lab.ui.package_verify import PackageVerifyController
 
 
 class ModelsRegistryController(QObject):
@@ -26,12 +27,16 @@ class ModelsRegistryController(QObject):
         self._project_id = ""
         self._adapter_id = "generic"
         self._selected_model_id = ""
+        self._package_verify = PackageVerifyController(self)
+        self._package_verify.operationCompleted.connect(self.operationCompleted.emit)
+        self._package_verify.operationFailed.connect(self.operationFailed.emit)
 
     def bind_project(self, workspace: Workspace, project_id: str, adapter_id: str) -> None:
         self._workspace = workspace
         self._project_id = project_id
         self._adapter_id = adapter_id
         self._selected_model_id = ""
+        self._package_verify.bind_project(workspace, project_id, adapter_id)
         self.changed.emit()
 
     def clear_project(self) -> None:
@@ -39,7 +44,12 @@ class ModelsRegistryController(QObject):
         self._project_id = ""
         self._adapter_id = "generic"
         self._selected_model_id = ""
+        self._package_verify.clear_project()
         self.changed.emit()
+
+    @Property(QObject, constant=True)
+    def packageVerify(self) -> QObject:
+        return self._package_verify
 
     @Property(bool, notify=changed)
     def hasProject(self) -> bool:
@@ -178,6 +188,7 @@ class ModelsRegistryController(QObject):
             self.changed.emit()
             return
         self.changed.emit()
+        self._package_verify.changed.emit()
         self.operationCompleted.emit(f"Model promoted to {next_stage.value}")
 
     def _models(self) -> list[RegisteredModel]:

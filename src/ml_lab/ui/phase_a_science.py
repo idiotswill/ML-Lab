@@ -306,32 +306,11 @@ class PhaseAScienceController(QObject):
 
     @Property(bool, notify=changed)
     def providerConfigValid(self) -> bool:
-        try:
-            validate_loopback_endpoint(self._local_endpoint)
-        except ValueError:
-            return False
-        return bool(self._local_model.strip()) and 1.0 <= self._local_timeout_seconds <= 900.0
+        return self._provider_config_valid()
 
     @Property(str, notify=changed)
     def providerExistingExperimentId(self) -> str:
-        record = self._selected_record()
-        if (
-            not self._workspace
-            or record is None
-            or record.contract_snapshot_id is None
-            or not self.providerConfigValid
-        ):
-            return ""
-        existing = completed_local_provider_baseline(
-            self._workspace,
-            project_id=self._project_id,
-            dataset_id=record.dataset_id,
-            contract_snapshot_id=record.contract_snapshot_id,
-            model=self._local_model,
-            endpoint=self._local_endpoint,
-            timeout_seconds=self._local_timeout_seconds,
-        )
-        return existing or ""
+        return self._provider_existing_experiment_id()
 
     @Property(list, notify=changed)
     def baselineOptions(self) -> list[dict[str, object]]:
@@ -459,16 +438,11 @@ class PhaseAScienceController(QObject):
                 "Select a completed Phase A experiment pinned to a contract snapshot.",
             )
             return
-        if not self.providerConfigValid:
+        if not self._provider_config_valid():
             self.operationFailed.emit(
                 "Local provider error",
                 "Use a non-empty model, an http:// loopback endpoint, and a valid timeout.",
             )
-            return
-        existing_id = self.providerExistingExperimentId
-        if existing_id:
-            self.baselineReady.emit(existing_id)
-            self.operationCompleted.emit("Existing immutable local-provider evidence selected")
             return
 
         self._baseline_busy = True
@@ -594,6 +568,37 @@ class PhaseAScienceController(QObject):
         if record.project_id != self._project_id:
             return None
         return record
+
+    def _provider_config_valid(self) -> bool:
+        if not self._local_model.strip():
+            return False
+        if not 1.0 <= self._local_timeout_seconds <= 900.0:
+            return False
+        try:
+            validate_loopback_endpoint(self._local_endpoint)
+        except ValueError:
+            return False
+        return True
+
+    def _provider_existing_experiment_id(self) -> str:
+        record = self._selected_record()
+        if (
+            not self._workspace
+            or record is None
+            or record.contract_snapshot_id is None
+            or not self._provider_config_valid()
+        ):
+            return ""
+        existing = completed_local_provider_baseline(
+            self._workspace,
+            project_id=self._project_id,
+            dataset_id=record.dataset_id,
+            contract_snapshot_id=record.contract_snapshot_id,
+            model=self._local_model,
+            endpoint=self._local_endpoint,
+            timeout_seconds=self._local_timeout_seconds,
+        )
+        return existing or ""
 
     def _completed_baseline_id(
         self,

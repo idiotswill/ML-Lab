@@ -86,6 +86,7 @@ class ExperimentsController(QObject):
                 "exampleCount": item.example_count,
                 "frozenAt": item.frozen_at or "",
                 "manifestDigest": item.manifest_artifact_digest or "",
+                "contractSnapshotId": item.contract_snapshot_id or "",
             }
             for item in DatasetService(self._workspace).list_for_project(self._project_id)
             if item.state is DatasetState.FROZEN
@@ -188,10 +189,6 @@ class ExperimentsController(QObject):
             return
         try:
             option = self._require_option(trainer_id, runtime_pack_id)
-            clean_text_key = text_key.strip()
-            clean_label_key = label_key.strip()
-            if not clean_text_key or not clean_label_key:
-                raise ValueError("Text key and label key are required.")
             seed_value = int(seed.strip())
             feature_dim_value = int(feature_dim.strip())
             alpha_value = float(alpha.strip())
@@ -199,6 +196,18 @@ class ExperimentsController(QObject):
                 raise ValueError("Feature dimension must be at least 256.")
             if alpha_value <= 0:
                 raise ValueError("Alpha must be greater than zero.")
+
+            config: dict[str, object] = {
+                "feature_dim": feature_dim_value,
+                "alpha": alpha_value,
+            }
+            if option.uses_payload_keys:
+                clean_text_key = text_key.strip()
+                clean_label_key = label_key.strip()
+                if not clean_text_key or not clean_label_key:
+                    raise ValueError("Text key and label key are required.")
+                config["text_key"] = clean_text_key
+                config["label_key"] = clean_label_key
 
             dataset = DatasetService(self._workspace).get(dataset_id)
             if dataset.project_id != self._project_id:
@@ -212,12 +221,7 @@ class ExperimentsController(QObject):
                 dataset_id=dataset.id,
                 trainer_id=option.trainer_id,
                 runtime_pack_id=option.runtime_pack_id,
-                config={
-                    "feature_dim": feature_dim_value,
-                    "alpha": alpha_value,
-                    "text_key": clean_text_key,
-                    "label_key": clean_label_key,
-                },
+                config=config,
                 seed=seed_value,
                 contract_snapshot_id=dataset.contract_snapshot_id,
             )
@@ -408,6 +412,7 @@ def _training_option_dict(item: TrainingOption) -> dict[str, object]:
         "defaultAlpha": item.default_alpha,
         "defaultTextKey": item.default_text_key,
         "defaultLabelKey": item.default_label_key,
+        "usesPayloadKeys": item.uses_payload_keys,
     }
 
 

@@ -4,7 +4,12 @@ import json
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
-from ml_lab.core.models import ExperimentRecord, ExperimentStatus, ModelStage, RegisteredModel
+from ml_lab.core.models import (
+    ExperimentRecord,
+    ExperimentStatus,
+    ModelStage,
+    RegisteredModel,
+)
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.models.registry import ModelRegistryService
 from ml_lab.storage.workspace import Workspace
@@ -49,8 +54,11 @@ class ModelsRegistryController(QObject):
         if not self._workspace or not self._project_id:
             return []
         registry = ModelRegistryService(self._workspace)
+        experiments = ExperimentService(self._workspace).list_for_project(
+            self._project_id
+        )
         rows: list[dict[str, object]] = []
-        for experiment in ExperimentService(self._workspace).list_for_project(self._project_id):
+        for experiment in experiments:
             if experiment.status is not ExperimentStatus.COMPLETED:
                 continue
             if experiment.model_artifact_digest is None:

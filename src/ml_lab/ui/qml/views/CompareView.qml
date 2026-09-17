@@ -277,10 +277,10 @@ Item {
 
                             background: Rectangle {
                                 radius: 7
-                                color: appController.compare.selectedExperiment.id === modelData.id ?
+                                color: appController.compare.selectedExperimentId === modelData.id ?
                                        Theme.accentSurface : (parent.hovered ? Theme.hover : "transparent")
                                 border.color: parent.activeFocus ? Theme.accent :
-                                              (appController.compare.selectedExperiment.id === modelData.id ?
+                                              (appController.compare.selectedExperimentId === modelData.id ?
                                                Theme.accentBorder : "transparent")
                                 border.width: parent.activeFocus ? 2 : 1
                             }
@@ -314,7 +314,7 @@ Item {
                         }
                         Item { Layout.fillWidth: true }
                         Text {
-                            text: appController.compare.comparisonRows.length + " shown"
+                            text: experimentList.count + " shown"
                             color: Theme.dim
                             font.pixelSize: 10
                         }

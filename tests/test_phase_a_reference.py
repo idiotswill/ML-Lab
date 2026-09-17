@@ -1,6 +1,6 @@
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 from ml_lab.adapters.phase_a_reference import PhaseAReferenceValidator
 from ml_lab.storage.workspace import Workspace

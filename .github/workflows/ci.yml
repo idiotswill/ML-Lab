@@ -25,7 +25,7 @@ jobs:
       - run: uv sync --extra dev
       - run: uv run ruff check .
       - run: uv run mypy src/ml_lab
-      - run: uv run pytest
+      - run: uv run pytest -m "not scale"
       - run: uv run python -m ml_lab --smoke-test
       - run: uv run python -m ml_lab --job-smoke-test
       - run: uv run python -m ml_lab --restart-recovery-smoke-test
@@ -45,9 +45,25 @@ jobs:
           QSG_RHI_BACKEND: software
         run: uv run python -m ml_lab --performance-probe
 
+  scale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt runtime libraries on Linux
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libxkbcommon-x11-0 libxcb-cursor0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Data Studio 100k scale gate
+        run: uv run pytest -m scale tests/test_data_studio_scale.py
+
   windows-standalone:
     runs-on: windows-latest
-    needs: core
+    needs: [core, scale]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

@@ -3,7 +3,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, QRunnable, QThreadPool, QUrl, Signal, Slot
+from PySide6.QtCore import (
+    Property,
+    QCoreApplication,
+    QObject,
+    QRunnable,
+    QThreadPool,
+    QUrl,
+    Signal,
+    Slot,
+)
 
 from ml_lab.bundles.service import BundleRecord, BundleService, VerificationReceipt
 from ml_lab.core.models import ModelStage, RegisteredModel
@@ -86,9 +95,13 @@ class PackageVerifyController(QObject):
         self._context_token = 0
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(1)
+        application = QCoreApplication.instance()
+        if application is not None:
+            application.aboutToQuit.connect(self.shutdown)
 
     def bind_project(self, workspace: Workspace, project_id: str, adapter_id: str) -> None:
         del adapter_id
+        self._pool.clear()
         self._context_token += 1
         self._workspace = workspace
         self._project_id = project_id
@@ -99,6 +112,7 @@ class PackageVerifyController(QObject):
         self.changed.emit()
 
     def clear_project(self) -> None:
+        self._pool.clear()
         self._context_token += 1
         self._workspace = None
         self._project_id = ""
@@ -108,6 +122,7 @@ class PackageVerifyController(QObject):
         self._busy_message = ""
         self.changed.emit()
 
+    @Slot()
     def shutdown(self) -> None:
         self._pool.clear()
         self._pool.waitForDone(2500)
@@ -285,7 +300,12 @@ class PackageVerifyController(QObject):
         self.operationCompleted.emit(message)
 
     @Slot(int, str, str)
-    def _operation_failed(self, context_token: int, operation: str, error: str) -> None:
+    def _operation_failed(
+        self,
+        context_token: int,
+        operation: str,
+        error: str,
+    ) -> None:
         if context_token != self._context_token:
             return
         self._busy = False

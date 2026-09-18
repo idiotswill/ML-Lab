@@ -192,7 +192,7 @@ class ModelsRegistryController(QObject):
 
     @Slot(str)
     def setModelStageFilter(self, value: str) -> None:
-        allowed = set(self.modelStageFilters)
+        allowed = {"ALL", *(stage.value for stage in ModelStage)}
         if value not in allowed or value == self._model_stage_filter:
             return
         self._model_stage_filter = value

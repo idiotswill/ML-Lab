@@ -58,8 +58,8 @@ jobs:
           version: "0.12.15"
           python-version: "3.12"
       - run: uv sync --extra dev
-      - name: Data Studio 100k scale gate
-        run: uv run pytest -m scale tests/test_data_studio_scale.py
+      - name: Phase 3 scale gates
+        run: uv run pytest -m scale
 
   windows-standalone:
     runs-on: windows-latest

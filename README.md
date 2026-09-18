@@ -8,7 +8,9 @@ Windows-first, local-first development tooling for training, benchmarking, red-t
 
 **PHASE 3 — COMPLETE LAB WORKFLOW / EXIT AUDIT IN PROGRESS**
 
-Phase 1 architecture and the Phase 2 product foundation are implemented. Phase 3's complete Lab workflow is under exit-gate audit; Phase 4 has not started, and no build is `TESTING_READY` yet.\n\nNo runtime integration is approved. `INTEGRATION_GATE = NO_GO` is the default and remains independent from model experiment/promotion status. ML Lab produces candidate models, bundles, compatibility data, metrics, failures, and verification evidence for a separate later Frankenhomie integration decision; it does not install or activate models in Frankenhomie.
+Phase 1 architecture and the Phase 2 product foundation are implemented. Phase 3's complete Lab workflow is under exit-gate audit; Phase 4 has not started, and no build is `TESTING_READY` yet.
+
+No runtime integration is approved. `INTEGRATION_GATE = NO_GO` is the default and remains independent from model experiment/promotion status. ML Lab produces candidate models, bundles, compatibility data, metrics, failures, and verification evidence for a separate later Frankenhomie integration decision; it does not install or activate models in Frankenhomie.
 
 Current Frankenhomie audit anchor used for the Phase 3 contract review:
 

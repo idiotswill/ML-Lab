@@ -145,6 +145,21 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "Installed clean-machine prepare smoke failed" }
               & $installedExe --release-smoke-reopen $workspace
               if ($LASTEXITCODE -ne 0) { throw "Installed clean-machine reopen smoke failed" }
+
+              $uxEvidence = Join-Path $PWD "deployment\release\ux-evidence"
+              New-Item -ItemType Directory -Force $uxEvidence | Out-Null
+              foreach ($theme in @("light", "dark")) {
+                  foreach ($scale in @("1", "1.25", "1.5", "2")) {
+                      $env:QT_QPA_PLATFORM = "offscreen"
+                      $env:QSG_RHI_BACKEND = "software"
+                      $env:QT_SCALE_FACTOR = $scale
+                      & $installedExe --release-visual-smoke $uxEvidence --visual-theme $theme
+                      if ($LASTEXITCODE -ne 0) {
+                          throw "Installed visual smoke failed for theme=$theme scale=$scale"
+                      }
+                  }
+              }
+              Remove-Item Env:QT_SCALE_FACTOR -ErrorAction SilentlyContinue
           }
           finally {
               $env:PATH = $originalPath

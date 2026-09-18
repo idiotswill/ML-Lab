@@ -60,6 +60,7 @@ Item {
                 Layout.fillWidth: true
                 placeholderText: "e.g. Residual semantics September"
                 activeFocusOnTab: true
+                Accessible.name: "Dataset name"
                 selectByMouse: true
                 onAccepted: root.createDatasetFromDialog()
             }

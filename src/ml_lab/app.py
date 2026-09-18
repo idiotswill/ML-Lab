@@ -79,6 +79,17 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--release-visual-smoke",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--visual-theme",
+        choices=("dark", "light"),
+        default="dark",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--performance-probe",
         action="store_true",
         help=argparse.SUPPRESS,
@@ -127,6 +138,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.restart_recovery_smoke_test:
         return restart_recovery_smoke_test()
+    if args.release_visual_smoke:
+        from ml_lab.ui.release_visual_smoke import run_release_visual_smoke
+
+        result = run_release_visual_smoke(
+            args.release_visual_smoke,
+            args.visual_theme,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result.get("ok") else 8
     if args.performance_probe:
         return performance_probe()
     if args.qml_smoke_test:

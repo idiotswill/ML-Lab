@@ -55,7 +55,7 @@ Item {
                     required property var modelData
 
                     width: list.width
-                    height: 96
+                    height: 126
                     radius: 9
                     color: Theme.surfaceAlt
                     border.color: Theme.border
@@ -89,6 +89,8 @@ Item {
                                 to: 1
                                 value: modelData.progress
                                 Layout.fillWidth: true
+                                Accessible.name: modelData.taskType + " progress"
+                                Accessible.description: Math.round(modelData.progress * 100) + " percent"
                             }
 
                             Text {
@@ -98,18 +100,48 @@ Item {
                                 Layout.fillWidth: true
                             }
 
-                            Text {
-                                visible: modelData.resultDigest.length > 0
-                                text: "Result artifact  " + modelData.resultDigest.slice(0, 16) + "…"
-                                color: Theme.dim
-                                font.pixelSize: 10
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Text {
+                                    text: "Elapsed " + modelData.elapsed
+                                    color: Theme.dim
+                                    font.pixelSize: 10
+                                }
+
+                                Text {
+                                    text: "Correlation " + modelData.correlationId
+                                    color: Theme.dim
+                                    font.pixelSize: 10
+                                    visible: modelData.correlationId.length > 0
+                                }
+
+                                Text {
+                                    visible: modelData.resultDigest.length > 0
+                                    Layout.fillWidth: true
+                                    text: "Result " + modelData.resultDigest.slice(0, 16) + "…"
+                                    color: Theme.dim
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
                             }
                         }
 
-                        LabButton {
-                            text: "Cancel"
-                            visible: modelData.status === "RUNNING" || modelData.status === "QUEUED"
-                            onClicked: appController.cancelJob(modelData.id)
+                        ColumnLayout {
+                            spacing: 6
+
+                            LabButton {
+                                text: "Open logs"
+                                onClicked: appController.openJobLogs(modelData.id)
+                                Accessible.description: "Open structured job events, stderr and job specification"
+                            }
+
+                            LabButton {
+                                text: "Cancel"
+                                visible: modelData.status === "RUNNING" || modelData.status === "QUEUED"
+                                onClicked: appController.cancelJob(modelData.id)
+                                Accessible.description: "Request cancellation of " + modelData.taskType
+                            }
                         }
                     }
                 }

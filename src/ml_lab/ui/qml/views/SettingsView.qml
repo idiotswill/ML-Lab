@@ -52,6 +52,8 @@ Item {
                 ComboBox {
                     id: themePicker
                     model: ["System", "Dark", "Light"]
+                    activeFocusOnTab: true
+                    Accessible.name: "Appearance theme"
                     currentIndex: appController.themeMode === "dark" ? 1
                                   : appController.themeMode === "light" ? 2 : 0
                     onActivated: appController.setThemeMode(

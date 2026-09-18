@@ -1,8 +1,8 @@
 # Delivery Plan
 
-Status: Phase 1 design
+Status: Living delivery plan — Phase 3 complete / exit gates verified
 
-This plan intentionally delays the first user-facing test build until the application has a complete, coherent vertical workflow and clean Windows packaging.
+Phases 1, 2, and 3 are implemented. Phase 3 exit gates are verified against `QUALITY_GATES.md`; Phase 4 has not started. This plan intentionally delays the first user-facing test build until the application has a complete, coherent vertical workflow and clean Windows packaging.
 
 ## Phase 1 — Architecture and delivery freeze
 
@@ -83,7 +83,7 @@ Main implementation areas:
 - development standalone packaging;
 - performance instrumentation.
 
-Phase 2 will be functional but is not the build handed to the user as the intended first testing iteration.
+Phase 2 is the implemented product foundation, but it is not the build handed to the user as the intended first testing iteration.
 
 ## Phase 3 — Full lab workflow + first real project
 
@@ -150,7 +150,7 @@ Purpose: make the host useful end-to-end and prove its abstraction with a real F
 - preserve current Qwen/provider baseline as a baseline, not host authority;
 - add the first trainable bounded local scorer as an experiment method, not an assumed winner.
 
-Phase 3 exit is the first time the complete intended workflow exists.
+Phase 3 exit is the first time the complete intended workflow exists. The Phase 3 gates and exact-head implementation CI evidence have passed; `docs/PHASE3_EXIT_AUDIT.md` records that evidence.
 
 ## Phase 4 — Testing-ready productization
 
@@ -221,7 +221,7 @@ The first testing-ready release should have architectural hooks but does not nee
 - remote/cloud training;
 - distributed training;
 - arbitrary third-party Python adapters;
-- live Frankenhomie deployment/integration;
+- live Frankenhomie deployment/integration (Lab output is handed off for a separate integration decision);
 - Phase C/D/E/F/G project adapters before their contracts stabilize.
 
 Deferring these avoids bloating the first release while preserving the seams needed to add them correctly later.

@@ -6,11 +6,13 @@ Windows-first, local-first development tooling for training, benchmarking, red-t
 
 ## Status
 
-**PHASE 1 — ARCHITECTURE / DELIVERY DESIGN**
+**PHASE 3 — COMPLETE LAB WORKFLOW / EXIT GATES VERIFIED**
 
-No runtime integration is approved. `INTEGRATION_GATE = NO_GO` is the default and remains independent from model experiment/promotion status.
+Phase 1 architecture, the Phase 2 product foundation, and the Phase 3 complete Lab workflow are implemented and Phase 3 exit gates are verified. Phase 4 has not started, and no build is `TESTING_READY` yet.
 
-Current Frankenhomie audit anchor used for this architecture pass:
+No runtime integration is approved. `INTEGRATION_GATE = NO_GO` is the default and remains independent from model experiment/promotion status. ML Lab produces candidate models, bundles, compatibility data, metrics, failures, and verification evidence for a separate later Frankenhomie integration decision; it does not install or activate models in Frankenhomie.
+
+Current Frankenhomie audit anchor used for the Phase 3 contract review:
 
 - repository: `idiotswill/frankenhomie-dev`
 - commit: `1ff3e2155a3c2d2b316023e9933edf3a6d53697f`
@@ -26,14 +28,14 @@ Frankenhomie remains sole authority for game state, sessions, identity, visibili
 
 The host application is deliberately generic. Frankenhomie-specific ML problems are supplied through versioned **project adapters**. Phase A residual semantics is the first real adapter; later adapters may target bounded combat ranking, social ranking, generation/template ranking, NPC intention ranking, and situation salience once their Frankenhomie contracts are stable.
 
-## Planned delivery
+## Delivery phases
 
-- **Phase 1 — Architecture freeze:** product boundary, desktop stack, storage model, worker protocol, adapter contract, quality/performance gates, release plan.
-- **Phase 2 — Product foundation:** polished Windows shell, workspace/project system, immutable artifact store, SQLite metadata/migrations, subprocess job engine, diagnostics, CI, self-test, adapter/runtime-pack registries.
-- **Phase 3 — Complete lab workflow:** dataset studio and frozen splits, leakage checks, experiment runner, comparison, red-team/failure library, model registry, bundle manifests, Phase A contract adapter, reference bounded-ranking trainer/runtime pack.
-- **Phase 4 — Testing-ready Windows release:** UX/performance pass, crash/recovery paths, fresh-load verification, Windows packaging, installer smoke tests, stress/e2e tests, downloadable `MLLab-Setup-<version>-x64.exe` and portable build artifact.
+- **Phase 1 — Architecture freeze (complete):** product boundary, desktop stack, storage model, worker protocol, adapter contract, quality/performance gates, release plan.
+- **Phase 2 — Product foundation (complete):** polished Windows shell, workspace/project system, immutable artifact store, SQLite metadata/migrations, subprocess job engine, diagnostics, CI, self-test, adapter/runtime-pack registries.
+- **Phase 3 — Complete lab workflow (complete / exit gates verified):** dataset studio and frozen splits, leakage checks, experiment runner, comparison, red-team/failure library, model registry, bundle manifests, Phase A contract adapter, reference bounded-ranking trainer/runtime pack.
+- **Phase 4 — Testing-ready Windows release (not started):** UX/performance pass, crash/recovery paths, fresh-load verification, Windows packaging, installer smoke tests, stress/e2e tests, downloadable `MLLab-Setup-<version>-x64.exe` and portable build artifact.
 
-See `docs/ARCHITECTURE.md`, `docs/DELIVERY_PLAN.md`, `docs/PROJECT_ADAPTER_CONTRACT.md`, and `docs/QUALITY_GATES.md` for the Phase 1 design.
+See `docs/ARCHITECTURE.md`, `docs/DELIVERY_PLAN.md`, `docs/PROJECT_ADAPTER_CONTRACT.md`, `docs/QUALITY_GATES.md`, and `docs/PHASE3_EXIT_AUDIT.md` for the implemented architecture, delivery sequence, adapter boundary, and verified Phase 3 exit evidence.
 
 ## Non-goals
 

@@ -1,0 +1,352 @@
+from __future__ import annotations
+
+import json
+
+from PySide6.QtCore import Property, QCoreApplication, QObject, Signal, Slot
+
+from ml_lab.core.models import (
+    ExperimentStatus,
+    ModelStage,
+    RegisteredModel,
+)
+from ml_lab.experiments.service import ExperimentService
+from ml_lab.models.registry import ModelRegistryService
+from ml_lab.storage.workspace import Workspace
+from ml_lab.ui.contracts import ContractSnapshotsController
+from ml_lab.ui.package_verify import PackageVerifyController
+
+
+class ModelsRegistryController(QObject):
+    changed = Signal()
+    operationCompleted = Signal(str)
+    operationFailed = Signal(str, str)
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._workspace: Workspace | None = None
+        self._project_id = ""
+        self._adapter_id = "generic"
+        self._selected_model_id = ""
+        self._model_offset = 0
+        self._model_page_size = 50
+        self._model_stage_filter = "ALL"
+        self._package_verify = PackageVerifyController(self)
+        self._package_verify.operationCompleted.connect(self.operationCompleted.emit)
+        self._package_verify.operationFailed.connect(self.operationFailed.emit)
+        self._contract_snapshots = ContractSnapshotsController(self)
+        self._contract_snapshots.operationCompleted.connect(self.operationCompleted.emit)
+        self._contract_snapshots.operationFailed.connect(self.operationFailed.emit)
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.shutdown)
+
+    def bind_project(self, workspace: Workspace, project_id: str, adapter_id: str) -> None:
+        self._workspace = workspace
+        self._project_id = project_id
+        self._adapter_id = adapter_id
+        self._selected_model_id = ""
+        self._model_offset = 0
+        self._model_stage_filter = "ALL"
+        self._package_verify.bind_project(workspace, project_id, adapter_id)
+        self._contract_snapshots.bind_project(workspace, project_id, adapter_id)
+        self.changed.emit()
+
+    def clear_project(self) -> None:
+        self._workspace = None
+        self._project_id = ""
+        self._adapter_id = "generic"
+        self._selected_model_id = ""
+        self._model_offset = 0
+        self._model_stage_filter = "ALL"
+        self._package_verify.clear_project()
+        self._contract_snapshots.clear_project()
+        self.changed.emit()
+
+    @Slot()
+    def shutdown(self) -> None:
+        self._package_verify.shutdown()
+        self._contract_snapshots.shutdown()
+
+    @Property(QObject, constant=True)
+    def packageVerify(self) -> QObject:
+        return self._package_verify
+
+    @Property(QObject, constant=True)
+    def contractSnapshots(self) -> QObject:
+        return self._contract_snapshots
+
+    @Property(bool, notify=changed)
+    def hasProject(self) -> bool:
+        return self._workspace is not None and bool(self._project_id)
+
+    @Property(str, notify=changed)
+    def selectedModelId(self) -> str:
+        return self._selected_model_id
+
+    @Property(list, constant=True)
+    def modelStageFilters(self) -> list[str]:
+        return ["ALL", *(stage.value for stage in ModelStage)]
+
+    @Property(str, notify=changed)
+    def modelStageFilter(self) -> str:
+        return self._model_stage_filter
+
+    @Property(int, notify=changed)
+    def modelPageNumber(self) -> int:
+        return (self._model_offset // self._model_page_size) + 1
+
+    @Property(int, notify=changed)
+    def modelTotal(self) -> int:
+        return self._model_total()
+
+    @Property(bool, notify=changed)
+    def canPreviousModelPage(self) -> bool:
+        return self._model_offset > 0
+
+    @Property(bool, notify=changed)
+    def canNextModelPage(self) -> bool:
+        return self._model_offset + self._model_page_size < self._model_total()
+
+    @Property(list, notify=changed)
+    def modelRows(self) -> list[dict[str, object]]:
+        return [_model_row(item) for item in self._models()]
+
+    @Property(list, notify=changed)
+    def registerableExperiments(self) -> list[dict[str, object]]:
+        if not self._workspace or not self._project_id:
+            return []
+        with self._workspace.database.connection() as conn:
+            rows = conn.execute(
+                "SELECT e.id,e.trainer_id,e.runtime_pack_id,"
+                "e.model_artifact_digest,e.completed_at "
+                "FROM experiments e "
+                "LEFT JOIN models m ON m.experiment_id=e.id "
+                "WHERE e.project_id=? AND e.status=? "
+                "AND e.model_artifact_digest IS NOT NULL AND m.id IS NULL "
+                "ORDER BY e.completed_at DESC,e.id LIMIT 100",
+                (self._project_id, ExperimentStatus.COMPLETED.value),
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "shortId": row["id"][:8],
+                "trainer": row["trainer_id"],
+                "runtime": row["runtime_pack_id"],
+                "modelSha256": row["model_artifact_digest"],
+                "completedAt": row["completed_at"] or "",
+            }
+            for row in rows
+        ]
+
+    @Property(dict, notify=changed)
+    def selectedModel(self) -> dict[str, object]:
+        model = self._selected_model()
+        return _model_detail(model) if model is not None else {}
+
+    @Property(list, notify=changed)
+    def stageHistory(self) -> list[dict[str, object]]:
+        if not self._workspace or not self._selected_model_id:
+            return []
+        registry = ModelRegistryService(self._workspace)
+        return [
+            {
+                "fromStage": str(item["from_stage"] or "REGISTERED"),
+                "toStage": str(item["to_stage"]),
+                "createdAt": str(item["created_at"]),
+                "evidence": _pretty_object(item["evidence"]),
+            }
+            for item in registry.stage_history(self._selected_model_id)
+        ]
+
+    @Property(str, notify=changed)
+    def nextStage(self) -> str:
+        if not self._workspace or not self._selected_model_id:
+            return ""
+        next_stage = ModelRegistryService(self._workspace).next_stage(
+            self._selected_model_id
+        )
+        return next_stage.value if next_stage is not None else ""
+
+    @Property(bool, notify=changed)
+    def canPromote(self) -> bool:
+        return self._can_promote()
+
+    @Property(str, notify=changed)
+    def promotionMessage(self) -> str:
+        if not self._workspace or not self._selected_model_id:
+            return "Select a registered model to inspect its promotion path."
+        registry = ModelRegistryService(self._workspace)
+        model = registry.get(self._selected_model_id)
+        next_stage = registry.next_stage(model.id)
+        if next_stage is None:
+            if model.stage is ModelStage.RELEASE_CANDIDATE:
+                return (
+                    "Release candidate reached. INTEGRATION_APPROVED is intentionally "
+                    "outside the ordinary ML Lab promotion API."
+                )
+            return "No further ordinary Lab promotion stage is available."
+        blockers = registry.promotion_blockers(model.id)
+        if blockers:
+            return f"{next_stage.value} blocked: " + " ".join(blockers)
+        return f"Eligible for the next sequential stage: {next_stage.value}."
+
+    @Slot(str)
+    def setModelStageFilter(self, value: str) -> None:
+        allowed = {"ALL", *(stage.value for stage in ModelStage)}
+        if value not in allowed or value == self._model_stage_filter:
+            return
+        self._model_stage_filter = value
+        self._model_offset = 0
+        self._selected_model_id = ""
+        self.changed.emit()
+
+    @Slot()
+    def previousModelPage(self) -> None:
+        if self._model_offset <= 0:
+            return
+        self._model_offset = max(0, self._model_offset - self._model_page_size)
+        self._selected_model_id = ""
+        self.changed.emit()
+
+    @Slot()
+    def nextModelPage(self) -> None:
+        if self._model_offset + self._model_page_size >= self._model_total():
+            return
+        self._model_offset += self._model_page_size
+        self._selected_model_id = ""
+        self.changed.emit()
+
+    @Slot(str)
+    def selectModel(self, model_id: str) -> None:
+        if any(item.id == model_id for item in self._models()):
+            self._selected_model_id = model_id
+            self.changed.emit()
+
+    @Slot(str)
+    def registerExperiment(self, experiment_id: str) -> None:
+        if not self._workspace or not self._project_id:
+            return
+        try:
+            experiments = ExperimentService(self._workspace)
+            experiment = experiments.get(experiment_id)
+            if experiment.project_id != self._project_id:
+                raise ValueError("Experiment does not belong to the selected project.")
+            model = ModelRegistryService(self._workspace).register_from_experiment(
+                experiment.id,
+                compatibility={
+                    "adapter_id": self._adapter_id,
+                    "trainer_id": experiment.trainer_id,
+                    "runtime_pack_id": experiment.runtime_pack_id,
+                    "dataset_id": experiment.dataset_id,
+                    "contract_snapshot_id": experiment.contract_snapshot_id,
+                },
+            )
+        except Exception as exc:
+            self.operationFailed.emit("Model registration", str(exc))
+            return
+        self._model_offset = 0
+        self._model_stage_filter = "ALL"
+        self._selected_model_id = model.id
+        self.changed.emit()
+        self.operationCompleted.emit("Model registered at EXPERIMENT stage")
+
+    @Slot(str)
+    def promoteSelected(self, note: str) -> None:
+        if not self._workspace or not self._selected_model_id:
+            return
+        registry = ModelRegistryService(self._workspace)
+        next_stage = registry.next_stage(self._selected_model_id)
+        if next_stage is None:
+            self.operationFailed.emit(
+                "Model promotion",
+                "No further ordinary Lab promotion stage is available.",
+            )
+            return
+        try:
+            registry.promote(
+                self._selected_model_id,
+                next_stage,
+                evidence={
+                    "source": "models-registry-ui",
+                    "note": note.strip(),
+                },
+            )
+        except Exception as exc:
+            self.operationFailed.emit("Model promotion", str(exc))
+            self.changed.emit()
+            return
+        self._model_offset = 0
+        self._model_stage_filter = "ALL"
+        self.changed.emit()
+        self._package_verify.changed.emit()
+        self.operationCompleted.emit(f"Model promoted to {next_stage.value}")
+
+    def _model_stage(self) -> ModelStage | None:
+        if self._model_stage_filter == "ALL":
+            return None
+        return ModelStage(self._model_stage_filter)
+
+    def _model_total(self) -> int:
+        if not self._workspace or not self._project_id:
+            return 0
+        return ModelRegistryService(self._workspace).count_for_project(
+            self._project_id,
+            stage=self._model_stage(),
+        )
+
+    def _models(self) -> list[RegisteredModel]:
+        if not self._workspace or not self._project_id:
+            return []
+        return ModelRegistryService(self._workspace).page_for_project(
+            self._project_id,
+            stage=self._model_stage(),
+            offset=self._model_offset,
+            limit=self._model_page_size,
+        )
+
+    def _selected_model(self) -> RegisteredModel | None:
+        if not self._workspace or not self._selected_model_id:
+            return None
+        try:
+            model = ModelRegistryService(self._workspace).get(self._selected_model_id)
+        except KeyError:
+            return None
+        return model if model.project_id == self._project_id else None
+
+    def _can_promote(self) -> bool:
+        if not self._workspace or not self._selected_model_id:
+            return False
+        registry = ModelRegistryService(self._workspace)
+        next_stage = registry.next_stage(self._selected_model_id)
+        if next_stage is None:
+            return False
+        return not registry.promotion_blockers(self._selected_model_id)
+
+
+def _model_row(item: RegisteredModel) -> dict[str, object]:
+    return {
+        "id": item.id,
+        "shortId": item.id[:8],
+        "experimentId": item.experiment_id,
+        "experimentShortId": item.experiment_id[:8],
+        "stage": item.stage.value,
+        "modelSha256": item.model_artifact_digest,
+        "updatedAt": item.updated_at,
+    }
+
+
+def _model_detail(item: RegisteredModel) -> dict[str, object]:
+    try:
+        compatibility = json.loads(item.compatibility_json)
+    except json.JSONDecodeError:
+        compatibility = item.compatibility_json
+    return {
+        **_model_row(item),
+        "manifestSha256": item.manifest_artifact_digest or "",
+        "compatibility": _pretty_object(compatibility),
+        "createdAt": item.created_at,
+    }
+
+
+def _pretty_object(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)

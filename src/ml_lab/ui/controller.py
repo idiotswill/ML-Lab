@@ -23,6 +23,11 @@ from ml_lab.core.config import AppConfig, user_config_dir
 from ml_lab.diagnostics.hardware import HardwareInfo, collect_hardware_info
 from ml_lab.extensions.catalog import ExtensionCatalog
 from ml_lab.services import LabServices, open_or_create_workspace
+from ml_lab.ui.compare import CompareController
+from ml_lab.ui.data_studio import DataStudioController
+from ml_lab.ui.experiments import ExperimentsController
+from ml_lab.ui.models_registry import ModelsRegistryController
+from ml_lab.ui.redteam_failures import RedTeamFailuresController
 
 LOGGER = logging.getLogger(__name__)
 
@@ -68,14 +73,37 @@ class AppController(QObject):
         self._catalog: ExtensionCatalog | None = None
         self._diagnostics: dict[str, object] = {}
         self._selected_project_id = ""
+
+        self._data_studio = DataStudioController(self)
+        self._data_studio.operationCompleted.connect(self.noticeRaised.emit)
+        self._data_studio.operationFailed.connect(self.errorRaised.emit)
+
+        self._experiments = ExperimentsController(self)
+        self._experiments.operationCompleted.connect(self.noticeRaised.emit)
+        self._experiments.operationFailed.connect(self.errorRaised.emit)
+
+        self._compare = CompareController(self)
+        self._compare.operationCompleted.connect(self.noticeRaised.emit)
+        self._compare.operationFailed.connect(self.errorRaised.emit)
+
+        self._redteam_failures = RedTeamFailuresController(self)
+        self._redteam_failures.operationCompleted.connect(self.noticeRaised.emit)
+        self._redteam_failures.operationFailed.connect(self.errorRaised.emit)
+
+        self._models_registry = ModelsRegistryController(self)
+        self._models_registry.operationCompleted.connect(self.noticeRaised.emit)
+        self._models_registry.operationFailed.connect(self.errorRaised.emit)
+
         self._diagnostic_pool = QThreadPool(self)
         self._diagnostic_pool.setMaxThreadCount(1)
         self._diagnostics_loading = False
         self._poller = QTimer(self)
         self._poller.setInterval(400)
         self._poller.timeout.connect(self._poll_jobs)
+
         color_scheme_changed = QGuiApplication.styleHints().colorSchemeChanged
         color_scheme_changed.connect(lambda _scheme: self.themeChanged.emit())
+
         if self._config.recent_workspace:
             candidate = Path(self._config.recent_workspace)
             try:
@@ -90,6 +118,26 @@ class AppController(QObject):
     @Property(str, notify=workspaceChanged)
     def workspacePath(self) -> str:
         return str(self._services.workspace.root) if self._services else ""
+
+    @Property(QObject, constant=True)
+    def dataStudio(self) -> QObject:
+        return self._data_studio
+
+    @Property(QObject, constant=True)
+    def experiments(self) -> QObject:
+        return self._experiments
+
+    @Property(QObject, constant=True)
+    def compare(self) -> QObject:
+        return self._compare
+
+    @Property(QObject, constant=True)
+    def redTeamFailures(self) -> QObject:
+        return self._redteam_failures
+
+    @Property(QObject, constant=True)
+    def modelsRegistry(self) -> QObject:
+        return self._models_registry
 
     @Property(list, notify=projectsChanged)
     def projects(self) -> list[dict[str, object]]:
@@ -148,6 +196,7 @@ class AppController(QObject):
             normalized = _url_or_path(path)
             services = open_or_create_workspace(normalized, create=create)
             if self._services:
+                self._clear_project_tools()
                 self._services.close()
             self._activate(services)
             self._config.recent_workspace = str(normalized)
@@ -176,6 +225,7 @@ class AppController(QObject):
         try:
             project = self._services.workspace.create_project(name, adapter_id, description)
             self._selected_project_id = project.id
+            self._bind_project_tools()
             self.projectsChanged.emit()
             self.selectionChanged.emit()
             self.noticeRaised.emit(f"Created project {name.strip()}")
@@ -186,10 +236,14 @@ class AppController(QObject):
     def openProject(self, project_id: str) -> None:
         if not self._services:
             return
-        if project_id not in {str(item["id"]) for item in self._services.workspace.project_dicts()}:
+        project_ids = {
+            str(item["id"]) for item in self._services.workspace.project_dicts()
+        }
+        if project_id not in project_ids:
             self.errorRaised.emit("Project error", "The selected project no longer exists.")
             return
         self._selected_project_id = project_id
+        self._bind_project_tools()
         self.selectionChanged.emit()
 
     @Slot(str)
@@ -200,6 +254,7 @@ class AppController(QObject):
             self._services.workspace.archive_project(project_id)
             if self._selected_project_id == project_id:
                 self._selected_project_id = ""
+                self._clear_project_tools()
                 self.selectionChanged.emit()
             self.projectsChanged.emit()
             self.noticeRaised.emit("Project archived")
@@ -271,16 +326,19 @@ class AppController(QObject):
                     for log in sorted(app_log_dir.glob("*.log*")):
                         archive.write(log, f"app-logs/{log.name}")
                 for job in self._services.jobs.list_recent(10):
-                    for name in ("events.jsonl", "stderr.log", "job_spec.json"):
-                        source = job.staging_dir / name
+                    for child_name in ("events.jsonl", "stderr.log", "job_spec.json"):
+                        source = job.staging_dir / child_name
                         if source.exists():
-                            archive.write(source, f"jobs/{job.id}/{name}")
+                            archive.write(source, f"jobs/{job.id}/{child_name}")
             self.noticeRaised.emit(f"Diagnostics exported to {target.name}")
         except Exception as exc:
             LOGGER.exception("Diagnostics export failed")
             self.errorRaised.emit("Export error", str(exc))
 
     def shutdown(self) -> None:
+        self._redteam_failures.shutdown()
+        self._compare.shutdown()
+        self._data_studio.shutdown()
         self._diagnostic_pool.clear()
         self._diagnostic_pool.waitForDone(2500)
         if self._services:
@@ -289,16 +347,64 @@ class AppController(QObject):
     def _activate(self, services: LabServices) -> None:
         self._services = services
         self._selected_project_id = ""
+        self._clear_project_tools()
         self._catalog = ExtensionCatalog(services.workspace.root)
         self._catalog.load()
-        # A probe for a previous workspace may still be running. Reset the guard
-        # so the new workspace always gets its own queued probe; stale results are
-        # discarded by the workspace key in the completion slots below.
         self._diagnostics_loading = False
         self._refresh_diagnostics()
         self._poller.start()
         self.extensionsChanged.emit()
         self.selectionChanged.emit()
+
+    def _clear_project_tools(self) -> None:
+        self._data_studio.clear_project()
+        self._experiments.clear_project()
+        self._compare.clear_project()
+        self._redteam_failures.clear_project()
+        self._models_registry.clear_project()
+
+    def _bind_project_tools(self) -> None:
+        if not self._services or not self._selected_project_id:
+            self._clear_project_tools()
+            return
+        project = next(
+            (
+                item
+                for item in self._services.workspace.project_dicts()
+                if item["id"] == self._selected_project_id
+            ),
+            None,
+        )
+        if project is None:
+            self._clear_project_tools()
+            return
+        adapter_id = str(project["adapter_id"])
+        self._data_studio.bind_project(
+            self._services.workspace,
+            self._selected_project_id,
+            adapter_id,
+        )
+        self._experiments.bind_project(
+            self._services.workspace,
+            self._services.jobs,
+            self._selected_project_id,
+            adapter_id,
+        )
+        self._compare.bind_project(
+            self._services.workspace,
+            self._selected_project_id,
+            adapter_id,
+        )
+        self._redteam_failures.bind_project(
+            self._services.workspace,
+            self._selected_project_id,
+            adapter_id,
+        )
+        self._models_registry.bind_project(
+            self._services.workspace,
+            self._selected_project_id,
+            adapter_id,
+        )
 
     def _refresh_diagnostics(self) -> None:
         if not self._services:
@@ -363,6 +469,7 @@ class AppController(QObject):
 
     def _poll_jobs(self) -> None:
         if self._services:
+            self._experiments.refresh()
             self.jobsChanged.emit()
 
 

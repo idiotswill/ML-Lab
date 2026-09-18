@@ -30,29 +30,16 @@ ApplicationWindow {
     palette.highlightedText: Theme.accentText
     palette.placeholderText: Theme.dim
 
-    Shortcut {
-        sequence: "Ctrl+1"
-        enabled: appController.hasWorkspace
-        onActivated: window.currentPage = 0
-    }
-
-    Shortcut {
-        sequence: "Ctrl+2"
-        enabled: appController.hasWorkspace
-        onActivated: window.currentPage = 1
-    }
-
-    Shortcut {
-        sequence: "Ctrl+3"
-        enabled: appController.hasWorkspace
-        onActivated: window.currentPage = 2
-    }
-
-    Shortcut {
-        sequence: "Ctrl+4"
-        enabled: appController.hasWorkspace
-        onActivated: window.currentPage = 3
-    }
+    Shortcut { sequence: "Ctrl+1"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 0 }
+    Shortcut { sequence: "Ctrl+2"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 1 }
+    Shortcut { sequence: "Ctrl+3"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 2 }
+    Shortcut { sequence: "Ctrl+4"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 3 }
+    Shortcut { sequence: "Ctrl+5"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 4 }
+    Shortcut { sequence: "Ctrl+6"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 5 }
+    Shortcut { sequence: "Ctrl+7"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 6 }
+    Shortcut { sequence: "Ctrl+8"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 7 }
+    Shortcut { sequence: "Ctrl+9"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 8 }
+    Shortcut { sequence: "Ctrl+0"; enabled: appController.hasWorkspace; onActivated: window.currentPage = 9 }
 
     Connections {
         target: appController
@@ -182,14 +169,25 @@ ApplicationWindow {
                         }
 
                         Repeater {
-                            model: ["Projects", "Jobs", "Diagnostics", "Settings"]
+                            model: [
+                                "Projects",
+                                "Data Studio",
+                                "Experiments",
+                                "Compare",
+                                "Red Team & Failures",
+                                "Models & Registry",
+                                "Package & Verify",
+                                "Jobs",
+                                "Diagnostics",
+                                "Settings"
+                            ]
 
                             delegate: Button {
                                 required property string modelData
                                 required property int index
 
                                 Layout.fillWidth: true
-                                implicitHeight: 42
+                                implicitHeight: 38
                                 text: modelData
                                 checkable: true
                                 checked: window.currentPage === index
@@ -209,19 +207,16 @@ ApplicationWindow {
 
                                 background: Rectangle {
                                     radius: 8
-                                    color: parent.checked ? Theme.accentSurface
-                                                          : (parent.hovered ? Theme.hover : "transparent")
-                                    border.color: parent.activeFocus ? Theme.accent
-                                                                    : (parent.checked ? Theme.accentBorder
-                                                                                      : "transparent")
+                                    color: parent.checked ? Theme.accentSurface :
+                                           (parent.hovered ? Theme.hover : "transparent")
+                                    border.color: parent.activeFocus ? Theme.accent :
+                                                  (parent.checked ? Theme.accentBorder : "transparent")
                                     border.width: parent.activeFocus ? 2 : 1
                                 }
                             }
                         }
 
-                        Item {
-                            Layout.fillHeight: true
-                        }
+                        Item { Layout.fillHeight: true }
 
                         Rectangle {
                             Layout.fillWidth: true
@@ -237,9 +232,7 @@ ApplicationWindow {
                                 tone: "warn"
                             }
 
-                            Item {
-                                Layout.fillWidth: true
-                            }
+                            Item { Layout.fillWidth: true }
                         }
                     }
                 }
@@ -254,6 +247,12 @@ ApplicationWindow {
                         currentIndex: window.currentPage
 
                         ProjectsView {}
+                        DataStudioView {}
+                        ExperimentsView {}
+                        CompareView {}
+                        RedTeamFailuresView {}
+                        ModelsRegistryView {}
+                        PackageVerifyView {}
                         JobsView {}
                         DiagnosticsView {}
                         SettingsView {}

@@ -1,8 +1,10 @@
 # ML Lab Architecture
 
-Status: **Phase 1 architecture freeze candidate**
+Status: **Implemented architecture baseline — Phase 3 exit gates verified**
 
-Date: 2026-09-16
+Architecture freeze: 2026-09-16
+
+Status refresh: 2026-09-18
 
 ## 1. Product boundary
 
@@ -37,7 +39,7 @@ Frankenhomie contract snapshot
 +----------------------+     +-----------------------------+
 ```
 
-The host never owns mechanics, legality, action commitment, hidden facts, world state, canon, or persistence for the game.
+The host never owns mechanics, legality, action commitment, hidden facts, world state, canon, or persistence for the game. It produces development artifacts and evidence; any later Frankenhomie integration consumes those outputs through a separately reviewed Frankenhomie-side change.
 
 ## 2. Desktop stack decision
 

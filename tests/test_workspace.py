@@ -3,13 +3,14 @@ from pathlib import Path
 import pytest
 
 from ml_lab.core.models import ProjectState
+from ml_lab.storage.database import SCHEMA_VERSION
 from ml_lab.storage.workspace import WORKSPACE_MARKER, Workspace
 
 
 def test_workspace_create_project_archive(tmp_path: Path) -> None:
     workspace = Workspace.create(tmp_path / "lab")
     assert (workspace.root / WORKSPACE_MARKER).exists()
-    assert workspace.database.schema_version() == 1
+    assert workspace.database.schema_version() == SCHEMA_VERSION
 
     project = workspace.create_project(" Semantic Lab ", "phase-a", " bounded semantics ")
     assert project.name == "Semantic Lab"

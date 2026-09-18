@@ -523,6 +523,76 @@ Item {
                             }
                         }
                     }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: appController.compare.selectedFailure.id ? 170 : 0
+                        visible: appController.compare.selectedFailure.id
+                        radius: 7
+                        color: Theme.surfaceAlt
+                        border.color: Theme.badBorder
+                        clip: true
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 6
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text {
+                                    text: "IMMUTABLE FAILURE RECORD"
+                                    color: Theme.badText
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                }
+                                StatusPill {
+                                    text: appController.compare.selectedFailure.severity || "FAILURE"
+                                    tone: "bad"
+                                }
+                                Text {
+                                    text: appController.compare.selectedFailure.kind || ""
+                                    color: Theme.text2
+                                    font.pixelSize: 10
+                                    font.weight: Font.DemiBold
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: appController.compare.selectedFailure.id ?
+                                          appController.compare.selectedFailure.id.substring(0, 12) : ""
+                                    color: Theme.dim
+                                    font.pixelSize: 9
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: Boolean(appController.compare.selectedFailure.evidenceDigest)
+                                text: "Evidence SHA-256 · " +
+                                      appController.compare.selectedFailure.evidenceDigest
+                                color: Theme.dim
+                                font.pixelSize: 9
+                                elide: Text.ElideMiddle
+                            }
+
+                            ScrollView {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                TextArea {
+                                    text: appController.compare.selectedFailure.payload || ""
+                                    readOnly: true
+                                    selectByMouse: true
+                                    wrapMode: TextEdit.NoWrap
+                                    color: Theme.text2
+                                    font.family: "Consolas"
+                                    font.pixelSize: 9
+                                    background: null
+                                    Accessible.name: "Immutable failure record"
+                                }
+                            }
+                        }
+                    }
+
                 }
             }
         }

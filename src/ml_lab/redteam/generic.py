@@ -125,11 +125,14 @@ def run_generic_sparse_redteam(
             if outcome.correct:
                 continue
             failure_count += 1
+            derived_seed = case.get("derived_seed", 0)
+            if not isinstance(derived_seed, int):
+                raise ValueError("Generated red-team case derived_seed must be an integer.")
             evidence: dict[str, object] = {
                 "suite_id": GENERIC_REDTEAM_SUITE_ID,
                 "base_case_id": str(case.get("base_case_id", "")),
                 "mutator_id": str(case.get("mutator_id", "")),
-                "derived_seed": int(case.get("derived_seed", 0)),
+                "derived_seed": derived_seed,
                 "authority_mutation_attempted": False,
             }
             if outcome.evidence is not None:

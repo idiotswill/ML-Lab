@@ -1,6 +1,6 @@
 # Project Adapter Contract
 
-Status: Implemented contract baseline — Phase 3 exit audit in progress
+Status: Implemented contract baseline — Phase 3 exit gates verified
 
 The ML Lab host is generic. A **project adapter** translates one completed/stable Frankenhomie seam into the host's generic experiment model.
 

@@ -6,9 +6,9 @@ Windows-first, local-first development tooling for training, benchmarking, red-t
 
 ## Status
 
-**PHASE 3 — COMPLETE LAB WORKFLOW / EXIT AUDIT IN PROGRESS**
+**PHASE 3 — COMPLETE LAB WORKFLOW / EXIT GATES VERIFIED**
 
-Phase 1 architecture and the Phase 2 product foundation are implemented. Phase 3's complete Lab workflow is under exit-gate audit; Phase 4 has not started, and no build is `TESTING_READY` yet.
+Phase 1 architecture, the Phase 2 product foundation, and the Phase 3 complete Lab workflow are implemented and Phase 3 exit gates are verified. Phase 4 has not started, and no build is `TESTING_READY` yet.
 
 No runtime integration is approved. `INTEGRATION_GATE = NO_GO` is the default and remains independent from model experiment/promotion status. ML Lab produces candidate models, bundles, compatibility data, metrics, failures, and verification evidence for a separate later Frankenhomie integration decision; it does not install or activate models in Frankenhomie.
 
@@ -32,10 +32,10 @@ The host application is deliberately generic. Frankenhomie-specific ML problems 
 
 - **Phase 1 — Architecture freeze (complete):** product boundary, desktop stack, storage model, worker protocol, adapter contract, quality/performance gates, release plan.
 - **Phase 2 — Product foundation (complete):** polished Windows shell, workspace/project system, immutable artifact store, SQLite metadata/migrations, subprocess job engine, diagnostics, CI, self-test, adapter/runtime-pack registries.
-- **Phase 3 — Complete lab workflow (exit audit in progress):** dataset studio and frozen splits, leakage checks, experiment runner, comparison, red-team/failure library, model registry, bundle manifests, Phase A contract adapter, reference bounded-ranking trainer/runtime pack.
+- **Phase 3 — Complete lab workflow (complete / exit gates verified):** dataset studio and frozen splits, leakage checks, experiment runner, comparison, red-team/failure library, model registry, bundle manifests, Phase A contract adapter, reference bounded-ranking trainer/runtime pack.
 - **Phase 4 — Testing-ready Windows release (not started):** UX/performance pass, crash/recovery paths, fresh-load verification, Windows packaging, installer smoke tests, stress/e2e tests, downloadable `MLLab-Setup-<version>-x64.exe` and portable build artifact.
 
-See `docs/ARCHITECTURE.md`, `docs/DELIVERY_PLAN.md`, `docs/PROJECT_ADAPTER_CONTRACT.md`, and `docs/QUALITY_GATES.md` for the implemented architecture, delivery sequence, adapter boundary, and current phase exit gates. Phase 3 is not complete until its exit gates, including exact-head test/CI evidence, are satisfied.
+See `docs/ARCHITECTURE.md`, `docs/DELIVERY_PLAN.md`, `docs/PROJECT_ADAPTER_CONTRACT.md`, `docs/QUALITY_GATES.md`, and `docs/PHASE3_EXIT_AUDIT.md` for the implemented architecture, delivery sequence, adapter boundary, and verified Phase 3 exit evidence.
 
 ## Non-goals
 

@@ -1,8 +1,8 @@
 # Delivery Plan
 
-Status: Living delivery plan — Phase 3 exit audit in progress
+Status: Living delivery plan — Phase 3 complete / exit gates verified
 
-Phases 1 and 2 are implemented. The Phase 3 workflow is implemented and is being audited against `QUALITY_GATES.md`; Phase 4 has not started. This plan intentionally delays the first user-facing test build until the application has a complete, coherent vertical workflow and clean Windows packaging.
+Phases 1, 2, and 3 are implemented. Phase 3 exit gates are verified against `QUALITY_GATES.md`; Phase 4 has not started. This plan intentionally delays the first user-facing test build until the application has a complete, coherent vertical workflow and clean Windows packaging.
 
 ## Phase 1 — Architecture and delivery freeze
 
@@ -150,7 +150,7 @@ Purpose: make the host useful end-to-end and prove its abstraction with a real F
 - preserve current Qwen/provider baseline as a baseline, not host authority;
 - add the first trainable bounded local scorer as an experiment method, not an assumed winner.
 
-Phase 3 exit is the first time the complete intended workflow exists. Exit is not declared solely from implementation presence: every applicable Phase 3 gate and exact-head test/CI evidence must still pass.
+Phase 3 exit is the first time the complete intended workflow exists. The Phase 3 gates and exact-head implementation CI evidence have passed; `docs/PHASE3_EXIT_AUDIT.md` records that evidence.
 
 ## Phase 4 — Testing-ready productization
 

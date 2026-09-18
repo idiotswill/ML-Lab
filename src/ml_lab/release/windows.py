@@ -93,6 +93,7 @@ def create_windows_portable(
     qt_version: str,
     nuitka_version: str,
     installer_recipe: Path | None = None,
+    installer_path: Path | None = None,
 ) -> tuple[Path, Path]:
     if not source_commit.strip():
         raise ValueError("source_commit is required")
@@ -102,8 +103,12 @@ def create_windows_portable(
         raise ValueError(f"Standalone directory does not exist: {dist_dir}")
     if not lock_path.is_file():
         raise ValueError(f"Dependency lock does not exist: {lock_path}")
+    if (installer_recipe is None) != (installer_path is None):
+        raise ValueError("installer_recipe and installer_path must be supplied together")
     if installer_recipe is not None and not installer_recipe.is_file():
         raise ValueError(f"Installer recipe does not exist: {installer_recipe}")
+    if installer_path is not None and not installer_path.is_file():
+        raise ValueError(f"Installer executable does not exist: {installer_path}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     files = _standalone_files(dist_dir)
@@ -124,9 +129,27 @@ def create_windows_portable(
             "sha256": _sha256_file(installer_recipe),
         }
 
+    artifacts: dict[str, object] = {
+        "portable_zip": {
+            "filename": archive_name,
+            "size": archive_path.stat().st_size,
+            "sha256": archive_sha256,
+        }
+    }
+    if installer_path is not None:
+        artifacts["installer_exe"] = {
+            "filename": installer_path.name,
+            "size": installer_path.stat().st_size,
+            "sha256": _sha256_file(installer_path),
+        }
+
     manifest: dict[str, object] = {
         "schema_version": _MANIFEST_SCHEMA_VERSION,
-        "build_kind": "development_portable",
+        "build_kind": (
+            "development_windows_package"
+            if installer_path is not None
+            else "development_portable"
+        ),
         "testing_ready": False,
         "integration_gate": "NO_GO",
         "application": {
@@ -155,13 +178,7 @@ def create_windows_portable(
             "sha256": tree_sha256,
             "files": files,
         },
-        "artifacts": {
-            "portable_zip": {
-                "filename": archive_name,
-                "size": archive_path.stat().st_size,
-                "sha256": archive_sha256,
-            }
-        },
+        "artifacts": artifacts,
     }
     manifest_path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
@@ -178,6 +195,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--lock", required=True, type=Path)
     parser.add_argument("--release-label", default=f"v{__version__}")
     parser.add_argument("--installer-recipe", type=Path)
+    parser.add_argument("--installer", type=Path)
     return parser.parse_args(argv)
 
 
@@ -194,6 +212,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         qt_version=metadata.version("PySide6"),
         nuitka_version=metadata.version("Nuitka"),
         installer_recipe=args.installer_recipe,
+        installer_path=args.installer,
     )
     print(archive_path)
     print(manifest_path)

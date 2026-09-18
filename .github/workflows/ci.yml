@@ -104,9 +104,49 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Compiled QML smoke failed" }
           & $exe.FullName --performance-probe
           if ($LASTEXITCODE -ne 0) { throw "Compiled performance probe failed" }
+      - name: Build developer installer
+        shell: pwsh
+        run: ./scripts/build_windows_installer.ps1
+      - name: Smoke install and uninstall
+        shell: pwsh
+        run: |
+          $version = (uv run python -c "from ml_lab import __version__; print(__version__)").Trim()
+          $installer = Join-Path $PWD "deployment\release\MLLab-Setup-$version-x64.exe"
+          if (-not (Test-Path $installer)) { throw "Installer was not produced: $installer" }
+
+          $installDir = Join-Path $env:RUNNER_TEMP "ML Lab Ünicode Install"
+          $workspace = Join-Path $env:RUNNER_TEMP "ML Lab Ünicode Workspace"
+          New-Item -ItemType Directory -Force $workspace | Out-Null
+          $sentinel = Join-Path $workspace "preserve-me.txt"
+          Set-Content -Path $sentinel -Value "workspace must survive uninstall"
+
+          & $installer "/DIR=$installDir" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          if ($LASTEXITCODE -ne 0) { throw "Silent installer failed" }
+
+          $installedExe = Join-Path $installDir "MLLab.exe"
+          if (-not (Test-Path $installedExe)) { throw "Installed MLLab.exe is missing" }
+
+          $originalPath = $env:PATH
+          try {
+              $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+              & $installedExe --smoke-test
+              if ($LASTEXITCODE -ne 0) { throw "Installed storage smoke failed" }
+              & $installedExe --job-smoke-test
+              if ($LASTEXITCODE -ne 0) { throw "Installed worker smoke failed" }
+          }
+          finally {
+              $env:PATH = $originalPath
+          }
+
+          $uninstaller = Join-Path $installDir "unins000.exe"
+          if (-not (Test-Path $uninstaller)) { throw "Uninstaller is missing" }
+          & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          if ($LASTEXITCODE -ne 0) { throw "Silent uninstall failed" }
+          if (Test-Path $installedExe) { throw "Uninstall left application executable behind" }
+          if (-not (Test-Path $sentinel)) { throw "Uninstall removed external workspace data" }
       - name: Package developer portable + provenance
         shell: pwsh
-        run: uv run python -m ml_lab.release.windows --dist deployment/main.dist --output deployment/release --source-commit "$env:SOURCE_COMMIT" --lock uv.lock
+        run: uv run python -m ml_lab.release.windows --dist deployment/main.dist --output deployment/release --source-commit "$env:SOURCE_COMMIT" --lock uv.lock --installer-recipe packaging/windows/MLLab.iss --installer deployment/release/MLLab-Setup-0.1.0.dev0-x64.exe
       - name: Retain Phase 4 developer packaging evidence
         uses: actions/upload-artifact@v4
         with:

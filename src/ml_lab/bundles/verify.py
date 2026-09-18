@@ -53,21 +53,37 @@ def verify_bundle_file(bundle_path: Path) -> dict[str, object]:
                     raise ValueError(f"SHA-256 mismatch for {name}.")
 
             manifest = _json_object(archive.read("bundle_manifest.json"), "bundle manifest")
+            compatibility = _json_object(
+                archive.read("compatibility.json"),
+                "compatibility manifest",
+            )
+            contract = _json_object(archive.read("contract.json"), "contract manifest")
+            datasets = _json_object(archive.read("datasets.json"), "datasets manifest")
+            _json_object(archive.read("environment.json"), "environment manifest")
+            known_failures = _json_array(
+                archive.read("known_failures.json"),
+                "known failures manifest",
+            )
+            metrics = _json_object(archive.read("metrics.json"), "metrics manifest")
+            model_manifest = _json_object(
+                archive.read("model_manifest.json"),
+                "model manifest",
+            )
             reproduction = _json_object(
                 archive.read("reproduction.json"),
                 "reproduction spec",
             )
-            input_partitions = reproduction.get("input_partitions")
-            if not isinstance(input_partitions, dict):
-                raise ValueError("Reproduction spec input_partitions must be an object.")
-            forbidden = {"TEST", "REDTEAM"} & {str(key) for key in input_partitions}
-            if forbidden:
-                raise ValueError(
-                    "Reproduction spec illegally exposes protected partition(s): "
-                    f"{sorted(forbidden)}"
-                )
-            if "TRAIN" not in input_partitions:
-                raise ValueError("Reproduction spec is missing the TRAIN partition.")
+            _validate_manifest_consistency(
+                manifest=manifest,
+                compatibility=compatibility,
+                contract=contract,
+                datasets=datasets,
+                known_failures=known_failures,
+                metrics=metrics,
+                model_manifest=model_manifest,
+                reproduction=reproduction,
+                hashes=hashes,
+            )
 
         return {
             "status": "PASS",
@@ -95,6 +111,140 @@ def write_verification_receipt(bundle_path: Path, receipt_path: Path) -> int:
         encoding="utf-8",
     )
     return 0 if receipt.get("status") == "PASS" else 8
+
+
+def _validate_manifest_consistency(
+    *,
+    manifest: dict[str, object],
+    compatibility: dict[str, object],
+    contract: dict[str, object],
+    datasets: dict[str, object],
+    known_failures: list[object],
+    metrics: dict[str, object],
+    model_manifest: dict[str, object],
+    reproduction: dict[str, object],
+    hashes: dict[str, str],
+) -> None:
+    if manifest.get("integration_gate") != "NO_GO":
+        raise ValueError("Bundle integration_gate must remain NO_GO.")
+
+    model_digest = hashes["model/model.bin"]
+    _require_equal(
+        manifest.get("model_artifact_sha256"),
+        model_digest,
+        "Bundle manifest model artifact hash",
+    )
+    _require_equal(
+        model_manifest.get("model_artifact_sha256"),
+        model_digest,
+        "Model manifest model artifact hash",
+    )
+    _require_equal(
+        manifest.get("model_manifest_sha256"),
+        hashes["model_manifest.json"],
+        "Bundle manifest model manifest hash",
+    )
+    _require_equal(
+        manifest.get("metrics_artifact_sha256"),
+        hashes["metrics.json"],
+        "Bundle manifest metrics hash",
+    )
+
+    experiment_id = manifest.get("experiment_id")
+    dataset_id = manifest.get("dataset_id")
+    _require_equal(
+        model_manifest.get("experiment_id"),
+        experiment_id,
+        "Model manifest experiment id",
+    )
+    _require_equal(
+        metrics.get("experiment_id"),
+        experiment_id,
+        "Metrics manifest experiment id",
+    )
+    _require_equal(
+        reproduction.get("experiment_id"),
+        experiment_id,
+        "Reproduction spec experiment id",
+    )
+    _require_equal(
+        datasets.get("dataset_id"),
+        dataset_id,
+        "Datasets manifest dataset id",
+    )
+
+    if manifest.get("compatibility") != compatibility:
+        raise ValueError("compatibility.json does not match bundle manifest compatibility.")
+    if model_manifest.get("compatibility") != compatibility:
+        raise ValueError("model_manifest.json does not match compatibility.json.")
+
+    dataset_manifest_digest = manifest.get("dataset_manifest_sha256")
+    _require_equal(
+        datasets.get("dataset_manifest_sha256"),
+        dataset_manifest_digest,
+        "Datasets manifest frozen dataset hash",
+    )
+    _require_equal(
+        reproduction.get("dataset_manifest_sha256"),
+        dataset_manifest_digest,
+        "Reproduction spec frozen dataset hash",
+    )
+
+    experiment_manifest_digest = manifest.get("experiment_manifest_sha256")
+    _require_equal(
+        model_manifest.get("experiment_manifest_sha256"),
+        experiment_manifest_digest,
+        "Model manifest experiment manifest hash",
+    )
+
+    contract_snapshot_id = manifest.get("contract_snapshot_id")
+    if contract_snapshot_id is None:
+        if contract.get("contract_snapshot") is not None:
+            raise ValueError("Contract manifest does not match an unpinned bundle.")
+    else:
+        _require_equal(
+            contract.get("snapshot_id"),
+            contract_snapshot_id,
+            "Contract manifest snapshot id",
+        )
+
+    if not all(isinstance(item, dict) for item in known_failures):
+        raise ValueError("known_failures.json entries must be JSON objects.")
+
+    input_partitions = reproduction.get("input_partitions")
+    if not isinstance(input_partitions, dict):
+        raise ValueError("Reproduction spec input_partitions must be an object.")
+    input_partitions = {str(key): value for key, value in input_partitions.items()}
+    forbidden = {"TEST", "REDTEAM"} & set(input_partitions)
+    if forbidden:
+        raise ValueError(
+            "Reproduction spec illegally exposes protected partition(s): "
+            f"{sorted(forbidden)}"
+        )
+    if "TRAIN" not in input_partitions:
+        raise ValueError("Reproduction spec is missing the TRAIN partition.")
+    if set(input_partitions) - {"TRAIN", "DEV"}:
+        raise ValueError("Reproduction spec contains unsupported trainer partition names.")
+
+    dataset_partitions = datasets.get("partitions")
+    if not isinstance(dataset_partitions, dict):
+        raise ValueError("Datasets manifest partitions must be an object.")
+    for split, digest in input_partitions.items():
+        if not isinstance(digest, str):
+            raise ValueError(f"Reproduction {split} partition hash must be a string.")
+        partition = dataset_partitions.get(split)
+        if not isinstance(partition, dict):
+            raise ValueError(f"Datasets manifest is missing the {split} partition.")
+        _require_equal(
+            partition.get("sha256"),
+            digest,
+            f"Reproduction {split} partition hash",
+        )
+
+
+def _require_equal(actual: object, expected: object, label: str) -> None:
+    if actual != expected:
+        raise ValueError(f"{label} does not match the bundle evidence.")
 
 
 def _parse_hash_manifest(payload: bytes) -> dict[str, str]:
@@ -134,6 +284,13 @@ def _json_object(payload: bytes, label: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError(f"{label} must be a JSON object.")
     return {str(key): item for key, item in value.items()}
+
+
+def _json_array(payload: bytes, label: str) -> list[object]:
+    value = json.loads(payload.decode("utf-8", errors="strict"))
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be a JSON array.")
+    return list(value)
 
 
 def _file_sha256(path: Path) -> str:

@@ -2,7 +2,9 @@
 
 Status: **Implemented architecture baseline — Phase 3 exit audit in progress**
 
-Architecture freeze: 2026-09-16\n\nStatus refresh: 2026-09-18
+Architecture freeze: 2026-09-16
+
+Status refresh: 2026-09-18
 
 ## 1. Product boundary
 

@@ -28,7 +28,11 @@ def _sha256_file(path: Path) -> str:
 
 def _standalone_files(dist_dir: Path) -> list[dict[str, object]]:
     files: list[dict[str, object]] = []
-    for path in sorted(dist_dir.rglob("*")):
+    paths = sorted(
+        dist_dir.rglob("*"),
+        key=lambda path: path.relative_to(dist_dir).as_posix(),
+    )
+    for path in paths:
         if path.is_symlink():
             raise ValueError(f"Portable package refuses symbolic link: {path}")
         if not path.is_file():

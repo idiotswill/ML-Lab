@@ -491,7 +491,7 @@ class RedTeamFailuresController(QObject):
 def _experiment_row(item: ExperimentRecord) -> dict[str, object]:
     return {
         "id": item.id,
-        "name": item.name,
+        "name": item.id[:8],
         "trainer": item.trainer_id,
         "runtime": item.runtime_pack_id,
         "createdAt": item.created_at,

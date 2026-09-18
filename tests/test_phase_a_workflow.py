@@ -133,7 +133,7 @@ def test_phase_a_protected_evaluation_uses_pinned_reference_commit(tmp_path: Pat
     )
 
     train_request = _request("I clobber Mara")
-    test_request = _request("Mara, I clobber you")
+    test_request = _request("Bring the iron hammer down upon Mara before she can flee")
     expected = _resolve()
     datasets = DatasetService(workspace)
     dataset = datasets.create(

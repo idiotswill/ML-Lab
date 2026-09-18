@@ -1,8 +1,8 @@
 # Delivery Plan
 
-Status: Living delivery plan — Phase 3 complete / exit gates verified
+Status: Living delivery plan — Phase 4 testing-ready productization in progress
 
-Phases 1, 2, and 3 are implemented. Phase 3 exit gates are verified against `QUALITY_GATES.md`; Phase 4 has not started. This plan intentionally delays the first user-facing test build until the application has a complete, coherent vertical workflow and clean Windows packaging.
+Phases 1, 2, and 3 are implemented and verified. Phase 4 is now in progress against `QUALITY_GATES.md`; no current artifact is `TESTING_READY` until every Phase 4 gate passes. This plan intentionally delays the first user-facing test build until the application has a complete, coherent vertical workflow and clean Windows packaging.
 
 ## Phase 1 — Architecture and delivery freeze
 

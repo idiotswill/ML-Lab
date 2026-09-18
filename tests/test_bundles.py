@@ -182,6 +182,72 @@ def test_bundle_semantically_rejects_protected_trainer_partition(tmp_path: Path)
     assert "protected partition" in str(result["error"])
 
 
+@pytest.mark.scale
+def test_corrupt_immutable_artifact_is_rejected_on_resolve(tmp_path: Path) -> None:
+    workspace = Workspace.create(tmp_path / "artifact-workspace")
+    ref = workspace.artifacts.commit_bytes(b"trusted immutable payload")
+    ref.path.write_bytes(b"corrupt payload")
+
+    with pytest.raises(OSError, match="corrupt"):
+        workspace.artifacts.resolve(ref.digest)
+
+
+@pytest.mark.scale
+def test_bundle_rehash_cannot_hide_malformed_json_manifest(tmp_path: Path) -> None:
+    workspace, model_id = _release_candidate(tmp_path)
+    bundle = BundleService(workspace).build_release_candidate(model_id)
+    source = workspace.artifacts.resolve(bundle.bundle_artifact_digest)
+    malformed = tmp_path / "malformed-manifest.zip"
+    members = _read_members(source)
+    members["model_manifest.json"] = b"{not-json\n"
+    members["hashes.sha256"] = _hash_manifest(members)
+    _write_members(malformed, members)
+
+    result = verify_bundle_file(malformed)
+    assert result["status"] == "FAIL"
+    assert result["error_type"] == "JSONDecodeError"
+
+
+@pytest.mark.scale
+def test_bundle_rehash_cannot_change_integration_gate(tmp_path: Path) -> None:
+    workspace, model_id = _release_candidate(tmp_path)
+    bundle = BundleService(workspace).build_release_candidate(model_id)
+    source = workspace.artifacts.resolve(bundle.bundle_artifact_digest)
+    malicious = tmp_path / "integration-go.zip"
+    members = _read_members(source)
+    manifest = json.loads(members["bundle_manifest.json"])
+    manifest["integration_gate"] = "GO"
+    members["bundle_manifest.json"] = (
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+    members["hashes.sha256"] = _hash_manifest(members)
+    _write_members(malicious, members)
+
+    result = verify_bundle_file(malicious)
+    assert result["status"] == "FAIL"
+    assert "integration_gate must remain NO_GO" in str(result["error"])
+
+
+@pytest.mark.scale
+def test_bundle_rehash_cannot_substitute_reproduction_partition(tmp_path: Path) -> None:
+    workspace, model_id = _release_candidate(tmp_path)
+    bundle = BundleService(workspace).build_release_candidate(model_id)
+    source = workspace.artifacts.resolve(bundle.bundle_artifact_digest)
+    malicious = tmp_path / "substituted-train.zip"
+    members = _read_members(source)
+    reproduction = json.loads(members["reproduction.json"])
+    reproduction["input_partitions"]["TRAIN"] = "f" * 64
+    members["reproduction.json"] = (
+        json.dumps(reproduction, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+    members["hashes.sha256"] = _hash_manifest(members)
+    _write_members(malicious, members)
+
+    result = verify_bundle_file(malicious)
+    assert result["status"] == "FAIL"
+    assert "Reproduction TRAIN partition hash" in str(result["error"])
+
+
 def _read_members(path: Path) -> dict[str, bytes]:
     with zipfile.ZipFile(path, "r") as archive:
         return {

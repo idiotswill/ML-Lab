@@ -1,13 +1,16 @@
+import json
 from pathlib import Path
 
-from ml_lab.core.models import DatasetSplit
+from ml_lab.core.models import DatasetSplit, FailureSeverity
 from ml_lab.datasets.service import DatasetService, ValidatedExampleInput
 from ml_lab.evaluation.runners import evaluate_generic_sparse_experiment
-from ml_lab.evaluation.service import EvaluationService
+from ml_lab.evaluation.service import CaseOutcome, EvaluationService
 from ml_lab.experiments.service import ExperimentService
+from ml_lab.failures.service import FailureService
 from ml_lab.storage.workspace import Workspace
 from ml_lab.trainers.service import SPARSE_RUNTIME_PACK_ID, SPARSE_TRAINER_ID
 from ml_lab.trainers.sparse_nb import SparseNBBuilder
+from ml_lab.ui.compare import CompareController
 
 
 def _completed_sparse_experiment(tmp_path: Path) -> tuple[Workspace, str]:
@@ -100,3 +103,62 @@ def test_generic_compare_runner_persists_protected_evidence_once(tmp_path: Path)
     assert [
         item.id for item in service.page_cases(experiment_id, DatasetSplit.TEST)
     ] == first_case_ids
+
+
+
+def test_compare_drills_from_case_to_immutable_failure_record(tmp_path: Path) -> None:
+    workspace, experiment_id = _completed_sparse_experiment(tmp_path)
+    experiment = ExperimentService(workspace).get(experiment_id)
+    evaluation = EvaluationService(workspace)
+
+    def evaluator(row: dict[str, object]) -> CaseOutcome:
+        if row["example_id"] == "test-a":
+            return CaseOutcome(
+                observed={"prediction": "WRONG"},
+                correct=False,
+                latency_ms=0.1,
+                failure_kind="CLASSIFICATION_MISMATCH",
+                failure_severity=FailureSeverity.NON_VETO,
+                evidence={"source": "compare-drilldown-test"},
+            )
+        return CaseOutcome(
+            observed=row["label"],
+            correct=True,
+            latency_ms=0.1,
+        )
+
+    evaluation.evaluate_partition(
+        experiment_id,
+        DatasetSplit.TEST,
+        evaluator,
+    )
+
+    controller = CompareController()
+    try:
+        controller.bind_project(
+            workspace,
+            experiment.project_id,
+            "generic",
+        )
+        controller.selectExperiment(experiment_id)
+        controller.setOnlyIncorrect(True)
+        cases = controller.cases
+        assert len(cases) == 1
+        controller.selectCase(int(cases[0]["id"]))
+
+        selected_case = controller.selectedCase
+        failure_id = str(selected_case["failureId"])
+        assert failure_id
+
+        immutable = FailureService(workspace).immutable_payload(failure_id)
+        selected_failure = controller.selectedFailure
+        assert selected_failure["id"] == failure_id
+        assert selected_failure["kind"] == "CLASSIFICATION_MISMATCH"
+        assert selected_failure["severity"] == FailureSeverity.NON_VETO.value
+        assert json.loads(str(selected_failure["payload"])) == immutable
+        assert (
+            selected_failure["evidenceDigest"]
+            == immutable["evidence_artifact_sha256"]
+        )
+    finally:
+        controller.shutdown()

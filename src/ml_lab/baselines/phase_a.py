@@ -100,6 +100,7 @@ def run_phase_a_baseline(
 
     reference = PhaseAReferenceValidator(workspace)
     repository = Path(snapshot.repo_path)
+    predictor: Callable[[Mapping[str, object]], Mapping[str, object]]
     if baseline_id == PHASE_A_ABSTENTION_BASELINE_ID:
         predictor = _deterministic_abstention
     else:

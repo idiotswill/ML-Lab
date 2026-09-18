@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -513,13 +513,13 @@ def _elapsed_text(created_at: str, updated_at: str, status: str) -> str:
     try:
         started = datetime.fromisoformat(created_at)
         if started.tzinfo is None:
-            started = started.replace(tzinfo=timezone.utc)
+            started = started.replace(tzinfo=UTC)
         if status in {"QUEUED", "RUNNING", "CANCELLING"}:
-            ended = datetime.now(timezone.utc)
+            ended = datetime.now(UTC)
         else:
             ended = datetime.fromisoformat(updated_at)
             if ended.tzinfo is None:
-                ended = ended.replace(tzinfo=timezone.utc)
+                ended = ended.replace(tzinfo=UTC)
         seconds = max(0, int((ended - started).total_seconds()))
     except ValueError:
         return "—"

@@ -16,6 +16,7 @@ from ml_lab.bundles.verify import write_verification_receipt
 from ml_lab.core.config import user_config_dir
 from ml_lab.core.models import TERMINAL_JOB_STATUSES, JobStatus
 from ml_lab.core.process import application_command
+from ml_lab.diagnostics.crash import install_local_crash_handler
 from ml_lab.diagnostics.logging_setup import configure_logging
 from ml_lab.jobs.manager import JobManager
 from ml_lab.jobs.worker import run_worker
@@ -410,7 +411,9 @@ def run_gui() -> int:
     app.setApplicationName("ML Lab")
     app.setApplicationDisplayName("Frankenhomie ML Lab")
 
-    configure_logging(user_config_dir() / "logs")
+    log_dir = user_config_dir() / "logs"
+    configure_logging(log_dir)
+    install_local_crash_handler(log_dir)
     controller = AppController()
     app.aboutToQuit.connect(controller.shutdown)
 

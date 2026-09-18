@@ -42,17 +42,19 @@ class ArtifactStore:
         target = self._target(digest)
         target.parent.mkdir(parents=True, exist_ok=True)
         if not target.exists():
-            with NamedTemporaryFile(dir=target.parent, delete=False) as tmp:
-                tmp.write(data)
-                tmp.flush()
-                os.fsync(tmp.fileno())
-                temp_path = Path(tmp.name)
+            temp_path: Path | None = None
             try:
+                with NamedTemporaryFile(dir=target.parent, delete=False) as tmp:
+                    temp_path = Path(tmp.name)
+                    tmp.write(data)
+                    tmp.flush()
+                    os.fsync(tmp.fileno())
                 if hashlib.sha256(temp_path.read_bytes()).hexdigest() != digest:
                     raise OSError("Artifact hash verification failed before commit.")
                 os.replace(temp_path, target)
             finally:
-                temp_path.unlink(missing_ok=True)
+                if temp_path is not None:
+                    temp_path.unlink(missing_ok=True)
         return self._register(target, digest, len(data), media_type, metadata or {})
 
     def commit_file(
@@ -66,9 +68,10 @@ class ArtifactStore:
         target = self._target(digest)
         target.parent.mkdir(parents=True, exist_ok=True)
         if not target.exists():
-            with NamedTemporaryFile(dir=target.parent, delete=False) as tmp:
-                temp_path = Path(tmp.name)
+            temp_path: Path | None = None
             try:
+                with NamedTemporaryFile(dir=target.parent, delete=False) as tmp:
+                    temp_path = Path(tmp.name)
                 with source.open("rb") as src, temp_path.open("wb") as dst:
                     shutil.copyfileobj(src, dst, length=1024 * 1024)
                     dst.flush()
@@ -78,7 +81,8 @@ class ArtifactStore:
                     raise OSError("Artifact changed or failed verification during commit.")
                 os.replace(temp_path, target)
             finally:
-                temp_path.unlink(missing_ok=True)
+                if temp_path is not None:
+                    temp_path.unlink(missing_ok=True)
         return self._register(target, digest, size, media_type, metadata or {})
 
     def resolve(self, digest: str) -> Path:

@@ -126,21 +126,61 @@ class ModelRegistryService:
             ).fetchone()
         return _model_from_row(row) if row is not None else None
 
+    def count_for_project(
+        self,
+        project_id: str,
+        *,
+        stage: ModelStage | None = None,
+    ) -> int:
+        with self.database.connection() as conn:
+            if stage is None:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM models WHERE project_id=?",
+                    (project_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM models WHERE project_id=? AND stage=?",
+                    (project_id, stage.value),
+                ).fetchone()
+        return int(row[0]) if row else 0
+
+    def page_for_project(
+        self,
+        project_id: str,
+        *,
+        stage: ModelStage | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> list[RegisteredModel]:
+        if offset < 0:
+            raise ValueError("offset must be >= 0")
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        with self.database.connection() as conn:
+            if stage is None:
+                rows = conn.execute(
+                    "SELECT * FROM models "
+                    "WHERE project_id=? "
+                    "ORDER BY updated_at DESC,id LIMIT ? OFFSET ?",
+                    (project_id, limit, offset),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM models "
+                    "WHERE project_id=? AND stage=? "
+                    "ORDER BY updated_at DESC,id LIMIT ? OFFSET ?",
+                    (project_id, stage.value, limit, offset),
+                ).fetchall()
+        return [_model_from_row(row) for row in rows]
+
     def list_for_project(
         self,
         project_id: str,
         *,
         limit: int = 200,
     ) -> list[RegisteredModel]:
-        if not 1 <= limit <= 1000:
-            raise ValueError("limit must be between 1 and 1000")
-        with self.database.connection() as conn:
-            rows = conn.execute(
-                "SELECT * FROM models "
-                "WHERE project_id=? ORDER BY updated_at DESC,id LIMIT ?",
-                (project_id, limit),
-            ).fetchall()
-        return [_model_from_row(row) for row in rows]
+        return self.page_for_project(project_id, limit=limit)
 
     def next_stage(self, model_id: str) -> ModelStage | None:
         model = self.get(model_id)

@@ -150,7 +150,7 @@ jobs:
               New-Item -ItemType Directory -Force $uxEvidence | Out-Null
               foreach ($theme in @("light", "dark")) {
                   foreach ($scale in @("1", "1.25", "1.5", "2")) {
-                      $env:QT_QPA_PLATFORM = "offscreen"
+                      $env:QT_QPA_PLATFORM = "windows"
                       $env:QSG_RHI_BACKEND = "software"
                       $env:QT_SCALE_FACTOR = $scale
                       & $installedExe --release-visual-smoke $uxEvidence --visual-theme $theme

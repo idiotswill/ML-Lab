@@ -26,7 +26,10 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
         raise ValueError("Visual smoke theme must be dark or light.")
 
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    if os.name == "nt":
+        os.environ["QT_QPA_PLATFORM"] = "windows"
+    else:
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ.setdefault("QSG_RHI_BACKEND", "software")
 
     with tempfile.TemporaryDirectory(prefix="ml-lab-release-visual-") as temp:

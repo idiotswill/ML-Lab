@@ -167,10 +167,23 @@ Item {
                             font.weight: Font.Bold
                         }
                         Text {
-                            text: appController.modelsRegistry.modelRows.length
+                            text: appController.modelsRegistry.modelTotal + " total"
                             color: Theme.muted
                             font.pixelSize: 11
                         }
+                    }
+
+                    ComboBox {
+                        Layout.fillWidth: true
+                        model: appController.modelsRegistry.modelStageFilters
+                        currentIndex: Math.max(
+                            0,
+                            appController.modelsRegistry.modelStageFilters.indexOf(
+                                appController.modelsRegistry.modelStageFilter
+                            )
+                        )
+                        Accessible.name: "Model stage filter"
+                        onActivated: appController.modelsRegistry.setModelStageFilter(currentText)
                     }
 
                     ListView {
@@ -224,10 +237,10 @@ Item {
 
                             background: Rectangle {
                                 radius: 7
-                                color: appController.modelsRegistry.selectedModel.id === modelData.id ?
+                                color: appController.modelsRegistry.selectedModelId === modelData.id ?
                                        Theme.accentSurface : (parent.hovered ? Theme.hover : "transparent")
                                 border.color: parent.activeFocus ? Theme.accent :
-                                              (appController.modelsRegistry.selectedModel.id === modelData.id ?
+                                              (appController.modelsRegistry.selectedModelId === modelData.id ?
                                                Theme.accentBorder : "transparent")
                                 border.width: parent.activeFocus ? 2 : 1
                             }
@@ -236,9 +249,33 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             visible: modelList.count === 0
-                            text: "No registered models yet."
+                            text: "No registered models on this page."
                             color: Theme.dim
                             font.pixelSize: 12
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Page " + appController.modelsRegistry.modelPageNumber
+                            color: Theme.muted
+                            font.pixelSize: 10
+                        }
+
+                        LabButton {
+                            text: "Previous"
+                            enabled: appController.modelsRegistry.canPreviousModelPage
+                            onClicked: appController.modelsRegistry.previousModelPage()
+                        }
+
+                        LabButton {
+                            text: "Next"
+                            enabled: appController.modelsRegistry.canNextModelPage
+                            onClicked: appController.modelsRegistry.nextModelPage()
                         }
                     }
                 }

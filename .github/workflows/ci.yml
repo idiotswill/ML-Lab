@@ -120,11 +120,19 @@ jobs:
           $sentinel = Join-Path $workspace "preserve-me.txt"
           Set-Content -Path $sentinel -Value "workspace must survive uninstall"
 
-          & $installer "/DIR=$installDir" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-          if ($LASTEXITCODE -ne 0) { throw "Silent installer failed" }
+          $setupLog = Join-Path $env:RUNNER_TEMP "ML Lab Ünicode Setup.log"
+          $setupArgs = "/DIR=`"$installDir`" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=`"$setupLog`""
+          $setup = Start-Process -FilePath $installer -ArgumentList $setupArgs -Wait -PassThru
+          if ($setup.ExitCode -ne 0) {
+              if (Test-Path $setupLog) { Get-Content $setupLog }
+              throw "Silent installer failed with exit code $($setup.ExitCode)"
+          }
 
           $installedExe = Join-Path $installDir "MLLab.exe"
-          if (-not (Test-Path $installedExe)) { throw "Installed MLLab.exe is missing" }
+          if (-not (Test-Path $installedExe)) {
+              if (Test-Path $setupLog) { Get-Content $setupLog }
+              throw "Installed MLLab.exe is missing from requested Unicode/space path"
+          }
 
           $originalPath = $env:PATH
           try {

@@ -63,6 +63,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--job-smoke-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
+        "--release-smoke-prepare",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--release-smoke-reopen",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--restart-recovery-smoke-test",
         action="store_true",
         help=argparse.SUPPRESS,
@@ -104,6 +114,16 @@ def main(argv: list[str] | None = None) -> int:
         return smoke_test()
     if args.job_smoke_test:
         return job_smoke_test()
+    if args.release_smoke_prepare:
+        from ml_lab.release.smoke import prepare_clean_machine_smoke
+
+        print(json.dumps(prepare_clean_machine_smoke(args.release_smoke_prepare)))
+        return 0
+    if args.release_smoke_reopen:
+        from ml_lab.release.smoke import reopen_clean_machine_smoke
+
+        print(json.dumps(reopen_clean_machine_smoke(args.release_smoke_reopen)))
+        return 0
     if args.restart_recovery_smoke_test:
         return restart_recovery_smoke_test()
     if args.performance_probe:

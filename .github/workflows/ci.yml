@@ -141,6 +141,10 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "Installed storage smoke failed" }
               & $installedExe --job-smoke-test
               if ($LASTEXITCODE -ne 0) { throw "Installed worker smoke failed" }
+              & $installedExe --release-smoke-prepare $workspace
+              if ($LASTEXITCODE -ne 0) { throw "Installed clean-machine prepare smoke failed" }
+              & $installedExe --release-smoke-reopen $workspace
+              if ($LASTEXITCODE -ne 0) { throw "Installed clean-machine reopen smoke failed" }
           }
           finally {
               $env:PATH = $originalPath

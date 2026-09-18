@@ -224,12 +224,16 @@ def _provider_evaluator(
                 },
             )
 
-        observed = outcome.observed
-        if isinstance(observed, dict) and last_provider:
-            observed = {**observed, "provider": dict(last_provider)}
-        evidence = outcome.evidence
-        if evidence is not None and last_provider:
-            evidence = {**dict(evidence), "provider": dict(last_provider)}
-        return replace(outcome, observed=observed, evidence=evidence)
+        observed_value = outcome.observed
+        if isinstance(observed_value, dict) and last_provider:
+            observed_value = {**observed_value, "provider": dict(last_provider)}
+        evidence_value = outcome.evidence
+        if evidence_value is not None and last_provider:
+            evidence_value = {**dict(evidence_value), "provider": dict(last_provider)}
+        return replace(
+            outcome,
+            observed=observed_value,
+            evidence=evidence_value,
+        )
 
     return evaluate

@@ -41,6 +41,7 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QGuiApplication
         from PySide6.QtQml import QQmlApplicationEngine
+        from PySide6.QtQuick import QQuickWindow
 
         from ml_lab.ui.controller import AppController
 
@@ -60,7 +61,11 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
             controller.shutdown()
             return {"ok": False, "error": "QML root did not load"}
 
-        window = roots[0]
+        raw_window = roots[0]
+        if not isinstance(raw_window, QQuickWindow):
+            controller.shutdown()
+            return {"ok": False, "error": "QML root is not a QQuickWindow"}
+        window = raw_window
         window.setWidth(1366)
         window.setHeight(768)
         window.show()

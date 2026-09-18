@@ -31,7 +31,7 @@ def _wait_terminal(manager: JobManager, job_id: str, timeout: float = 10.0):
 def test_hash_restart_marks_interrupted_and_clean_retry_completes(tmp_path: Path) -> None:
     workspace = Workspace.create(tmp_path / "workspace")
     source = tmp_path / "hash-source.bin"
-    source.write_bytes((b"restart-safe-hash\n" * 131_072))
+    source.write_bytes(b"restart-safe-hash\n" * 131_072)
     expected = hashlib.sha256(source.read_bytes()).hexdigest()
 
     interrupted_id = "interrupted-hash"

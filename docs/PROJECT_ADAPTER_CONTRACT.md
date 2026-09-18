@@ -1,6 +1,6 @@
 # Project Adapter Contract
 
-Status: Phase 1 design
+Status: Implemented contract baseline — Phase 3 exit audit in progress
 
 The ML Lab host is generic. A **project adapter** translates one completed/stable Frankenhomie seam into the host's generic experiment model.
 
@@ -24,7 +24,7 @@ Required responsibilities:
 
 ## 2. Host-facing interface
 
-The concrete Python API may evolve during Phase 2, but the conceptual interface is frozen:
+The concrete Python API has evolved through Phases 2 and 3, but this conceptual authority boundary remains frozen:
 
 ```text
 AdapterDescriptor
@@ -143,7 +143,7 @@ Phase A vetoes include at minimum:
 - zero-model-route violation;
 - caller-overridable safety threshold.
 
-A future Phase A research chat may change the trainer/model method without changing this adapter authority boundary.
+Future Phase A experiments may change the trainer/model method without changing this adapter authority boundary.
 
 ## 7. Later adapters
 
@@ -167,4 +167,4 @@ authoritative state
  -> ordinary receipt
 ```
 
-The Lab stops before the ordinary resolver. It evaluates proposals; it does not become the resolver.
+The Lab stops before the ordinary resolver. It evaluates proposals and packages candidate models/evidence; it does not become the resolver, deploy into Frankenhomie, or grant itself integration approval.

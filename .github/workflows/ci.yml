@@ -1,5 +1,6 @@
 name: CI
 
+# PR branches run once via pull_request; main also runs on push.
 on:
   push:
     branches: [main]

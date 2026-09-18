@@ -11,6 +11,7 @@ from ml_lab.core.models import DatasetSplit, ExperimentRecord, ExperimentStatus
 from ml_lab.evaluation.runners import evaluate_packaged_experiment
 from ml_lab.evaluation.service import EvaluationCaseRecord, EvaluationService
 from ml_lab.experiments.service import ExperimentService
+from ml_lab.failures.service import FailureService
 from ml_lab.storage.workspace import Workspace
 from ml_lab.trainers.service import (
     PHASE_A_RUNTIME_PACK_ID,
@@ -238,12 +239,21 @@ class CompareController(QObject):
 
     @Property(dict, notify=changed)
     def selectedCase(self) -> dict[str, object]:
-        if not self._selected_case_id:
+        item = self._selected_case_record()
+        return _case_detail(item) if item is not None else {}
+
+    @Property(dict, notify=changed)
+    def selectedFailure(self) -> dict[str, object]:
+        if not self._workspace:
             return {}
-        for item in self._current_cases():
-            if item.id == self._selected_case_id:
-                return _case_detail(item)
-        return {}
+        item = self._selected_case_record()
+        if item is None or not item.failure_id:
+            return {}
+        try:
+            payload = FailureService(self._workspace).immutable_payload(item.failure_id)
+        except KeyError:
+            return {}
+        return _failure_detail(payload)
 
     @Property(bool, notify=changed)
     def evaluatorAvailable(self) -> bool:
@@ -596,6 +606,14 @@ class CompareController(QObject):
             only_incorrect=self._only_incorrect,
         )
 
+    def _selected_case_record(self) -> EvaluationCaseRecord | None:
+        if not self._selected_case_id:
+            return None
+        for item in self._current_cases():
+            if item.id == self._selected_case_id:
+                return item
+        return None
+
     def _current_cases(self) -> list[EvaluationCaseRecord]:
         if not self._workspace or not self._selected_experiment_id:
             return []
@@ -627,6 +645,23 @@ def _case_detail(item: EvaluationCaseRecord) -> dict[str, object]:
         "expected": _pretty_json(item.expected_json),
         "observed": _pretty_json(item.observed_json),
         "createdAt": item.created_at,
+    }
+
+
+def _failure_detail(payload: dict[str, object]) -> dict[str, object]:
+    return {
+        "id": str(payload.get("failure_id") or ""),
+        "kind": str(payload.get("kind") or ""),
+        "severity": str(payload.get("severity") or ""),
+        "split": str(payload.get("split") or ""),
+        "createdAt": str(payload.get("created_at") or ""),
+        "evidenceDigest": str(payload.get("evidence_artifact_sha256") or ""),
+        "payload": json.dumps(
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        ),
     }
 
 

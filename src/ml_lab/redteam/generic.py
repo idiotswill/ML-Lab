@@ -15,7 +15,6 @@ from ml_lab.storage.workspace import Workspace
 from ml_lab.trainers.service import SPARSE_RUNTIME_PACK_ID, SPARSE_TRAINER_ID
 from ml_lab.trainers.sparse_nb import SparseNBModel
 
-
 GENERIC_REDTEAM_SUITE_ID = "generic.text-perturbation.v1"
 
 

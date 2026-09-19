@@ -63,6 +63,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--idle-memory-probe-child",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--smoke-test",
         action="store_true",
         help="Run a non-GUI installation smoke test.",
@@ -99,6 +104,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--release-performance-evidence",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--performance-smoke",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--qml-smoke-test", action="store_true", help=argparse.SUPPRESS)
     return parser
 
@@ -131,6 +146,8 @@ def main(argv: list[str] | None = None) -> int:
         return prepare_interrupted_job(args.prepare_interrupted_job)
     if args.startup_probe_child:
         return startup_probe_child()
+    if args.idle_memory_probe_child:
+        return idle_memory_probe_child()
     if args.smoke_test:
         return smoke_test()
     if args.job_smoke_test:
@@ -158,6 +175,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result.get("ok") else 8
     if args.performance_probe:
         return performance_probe()
+    if args.release_performance_evidence:
+        from ml_lab.release.performance import run_release_performance_evidence
+
+        result = run_release_performance_evidence(
+            args.release_performance_evidence,
+            smoke=args.performance_smoke,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result.get("ok") else 10
     if args.qml_smoke_test:
         return qml_smoke_test()
     return run_gui()
@@ -326,9 +352,17 @@ def startup_probe_child() -> int:
     qml_path = Path(__file__).parent / "ui" / "qml" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))
     app.processEvents()
-    ok = bool(engine.rootObjects())
+    roots = engine.rootObjects()
+    ok = bool(roots)
+    interactive_window_ready = False
+    if roots:
+        root = roots[0]
+        interactive_window_ready = bool(root.property("visible")) and bool(
+            root.property("enabled")
+        )
     payload = {
         "ok": ok,
+        "interactive_window_ready": interactive_window_ready,
         "qml_load_ms": round((time.perf_counter() - started) * 1000, 2),
         "working_set_bytes": _working_set_bytes(),
     }
@@ -338,6 +372,50 @@ def startup_probe_child() -> int:
     del app
     return 0 if ok else 2
 
+
+
+def idle_memory_probe_child() -> int:
+    """Load the base QML shell, settle briefly, then report idle working set."""
+    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtQml import QQmlApplicationEngine
+
+    from ml_lab.ui.controller import AppController
+
+    app = QGuiApplication(["ml-lab-idle-memory-probe"])
+    app.setOrganizationName("Frankenhomie")
+    app.setOrganizationDomain("local.frankenhomie")
+    app.setApplicationName("ML Lab")
+    controller = AppController()
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("appController", controller)
+    qml_path = Path(__file__).parent / "ui" / "qml" / "Main.qml"
+    engine.load(QUrl.fromLocalFile(str(qml_path)))
+    app.processEvents()
+    roots = engine.rootObjects()
+    if not roots:
+        controller.shutdown()
+        del engine
+        del app
+        print(json.dumps({"ok": False, "error": "QML root did not load"}))
+        return 7
+
+    deadline = time.monotonic() + 0.5
+    while time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+
+    working_set = _working_set_bytes()
+    payload = {
+        "ok": working_set is not None,
+        "idle_working_set_bytes": working_set,
+    }
+    print(json.dumps(payload), flush=True)
+    controller.shutdown()
+    del engine
+    del app
+    return 0 if working_set is not None else 7
 
 def performance_probe() -> int:
     """Measure process launch through QML readiness using this same build."""

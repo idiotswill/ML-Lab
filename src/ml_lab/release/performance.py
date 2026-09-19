@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -9,7 +10,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
-from ml_lab.core.process import application_command
+from ml_lab.core.process import application_command, compiled_application_executable
 from ml_lab.datasets.service import DatasetService
 from ml_lab.diagnostics.hardware import collect_hardware_info
 from ml_lab.jobs.manager import JobManager
@@ -32,10 +33,13 @@ def run_release_performance_evidence(
     """Collect Phase 4 performance evidence without authorizing release or integration."""
     row_count = _SMOKE_ROWS if smoke else _FULL_ROWS
     import_rows = _SMOKE_IMPORT_ROWS if smoke else _FULL_IMPORT_ROWS
+    executable = compiled_application_executable()
+    executable_evidence = _executable_evidence(executable)
     if not smoke and os.name != "nt":
         payload = {
             "ok": False,
             "error": "Representative performance evidence must run on Windows.",
+            "application_executable": executable_evidence,
             "testing_ready_authorized": False,
             "integration_gate": "NO_GO",
         }
@@ -133,6 +137,7 @@ def run_release_performance_evidence(
         "worker_load_sampled": _gt_zero(_nested(ui, "worker_load", "samples")),
         "cancellation_observed": worker_cancelled
         and _is_number(_nested(ui, "cancellation", "visible_ack_ms")),
+        "compiled_executable_fingerprinted": executable_evidence is not None,
     }
     instrumentation_checks_pass = all(instrumentation_checks.values())
     gate_evaluable = not smoke and os.name == "nt" and row_count == _FULL_ROWS
@@ -148,6 +153,7 @@ def run_release_performance_evidence(
         "smoke": smoke,
         "gate_evaluable": gate_evaluable,
         "representative_hardware_review_required": True,
+        "application_executable": executable_evidence,
         "hardware": hardware,
         "startup": startup,
         "idle_memory": idle_memory,
@@ -461,6 +467,24 @@ def _last_json(stdout: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise RuntimeError("Probe JSON output must be an object.")
     return {str(key): item for key, item in value.items()}
+
+
+def _executable_evidence(path: Path | None) -> dict[str, object] | None:
+    if path is None or not path.is_file():
+        return None
+    return {
+        "filename": path.name,
+        "size_bytes": path.stat().st_size,
+        "sha256": _sha256_file(path),
+    }
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _bytes_to_mb(value: object) -> float | None:

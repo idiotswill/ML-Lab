@@ -14,7 +14,6 @@ from ml_lab.datasets.service import DatasetService
 from ml_lab.diagnostics.hardware import collect_hardware_info
 from ml_lab.jobs.manager import JobManager
 from ml_lab.storage.workspace import Workspace
-from ml_lab.ui.data_studio import DataStudioController
 
 _FULL_ROWS = 100_000
 _SMOKE_ROWS = 2_000
@@ -102,8 +101,8 @@ def run_release_performance_evidence(
     import_stalls_ok = _eq_zero(_nested(ui, "background_import", "stalls_over_100ms"))
     worker_stalls_ok = _eq_zero(_nested(ui, "worker_load", "stalls_over_100ms"))
     bounded_100k = (
-        int(ui.get("primary_rows", -1)) == row_count
-        and int(ui.get("materialized_page_examples", -1)) == _PAGE_SIZE
+        ui.get("primary_rows") == row_count
+        and ui.get("materialized_page_examples") == _PAGE_SIZE
     )
     import_complete = bool(_nested(ui, "background_import", "completed"))
     worker_cancelled = bool(_nested(ui, "cancellation", "terminal_cancelled"))
@@ -236,7 +235,8 @@ def _run_ui_evidence(
     controller.openProject(project_id)
     app.processEvents()
     project_open_ms = round((time.perf_counter() - project_started) * 1000.0, 2)
-    if str(controller.selectedProject.get("id", "")) != project_id:
+    selected_project = cast(Any, controller).selectedProject
+    if str(selected_project.get("id", "")) != project_id:
         controller.shutdown()
         raise RuntimeError("Performance evidence could not open the prepared project.")
 
@@ -251,9 +251,9 @@ def _run_ui_evidence(
         del engine
         del app
         raise RuntimeError("Performance evidence QML root did not load as QQuickWindow.")
-    window = cast(QQuickWindow, roots[0])
+    window = roots[0]
 
-    data = cast(DataStudioController, controller.dataStudio)
+    data = cast(Any, controller).dataStudio
     page_started = time.perf_counter()
     data.selectDataset(primary_dataset_id)
     examples = data.examples
@@ -301,7 +301,7 @@ def _run_ui_evidence(
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline:
         app.processEvents()
-        for row in controller.jobs:
+        for row in cast(Any, controller).jobs:
             if str(row.get("id", "")) == job.id:
                 visible_status = str(row.get("status", ""))
                 if visible_status in {"CANCELLING", "CANCELLED"}:

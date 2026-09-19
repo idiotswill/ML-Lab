@@ -10,11 +10,15 @@ Item {
         anchors.fill: parent
         spacing: 12
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
+            columns: root.width < 900 ? 3 : 6
+            columnSpacing: 10
+            rowSpacing: 8
 
             ColumnLayout {
                 Layout.fillWidth: true
+                Layout.columnSpan: root.width < 900 ? 3 : 2
                 spacing: 2
                 Text {
                     text: "Red Team & Failures"
@@ -23,14 +27,17 @@ Item {
                     font.weight: Font.DemiBold
                 }
                 Text {
+                    Layout.fillWidth: true
                     text: "Seeded adversarial runs · immutable failures · regression promotion"
                     color: Theme.muted
                     font.pixelSize: 12
+                    wrapMode: Text.WordWrap
                 }
             }
 
             SpinBox {
                 id: seedBox
+                Layout.fillWidth: root.width < 900
                 from: 0
                 to: 2147483647
                 value: 1337
@@ -41,6 +48,7 @@ Item {
 
             SpinBox {
                 id: caseLimitBox
+                Layout.fillWidth: root.width < 900
                 from: 1
                 to: 5000
                 value: 100
@@ -50,6 +58,7 @@ Item {
             }
 
             LabButton {
+                Layout.fillWidth: root.width < 900
                 text: appController.redTeamFailures.busy ? "Running…" : "Run red team"
                 primary: true
                 enabled: appController.redTeamFailures.canRunRedTeam
@@ -57,6 +66,7 @@ Item {
             }
 
             LabButton {
+                Layout.fillWidth: root.width < 900
                 text: "Cancel"
                 visible: appController.redTeamFailures.busy
                 enabled: appController.redTeamFailures.busy
@@ -202,7 +212,7 @@ Item {
 
             Panel {
                 SplitView.fillWidth: true
-                SplitView.minimumWidth: 430
+                SplitView.minimumWidth: 340
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 10

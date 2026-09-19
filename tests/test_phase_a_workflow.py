@@ -11,6 +11,10 @@ from ml_lab.adapters.phase_a import (
 from ml_lab.contracts.snapshot import ContractFileSpec, ContractSnapshotService
 from ml_lab.core.models import DatasetSplit
 from ml_lab.datasets.service import DatasetService, ValidatedExampleInput
+from ml_lab.evaluation.phase_a_metrics import (
+    metric_rows_for_ui,
+    summarize_phase_a_experiment,
+)
 from ml_lab.evaluation.runners import evaluate_phase_a_sparse_experiment
 from ml_lab.evaluation.service import EvaluationService
 from ml_lab.experiments.service import ExperimentService
@@ -205,6 +209,20 @@ def test_phase_a_protected_evaluation_uses_pinned_reference_commit(tmp_path: Pat
     )
     assert len(cases) == 1
     observed = json.loads(cases[0].observed_json)
+    preflight = observed["preflight"]
+    assert preflight["status"] == "MODEL_ALLOWED"
+    assert preflight["model_call_allowed"] is True
+    assert preflight["fresh_process"] is True
+    assert preflight["authority_mutation_allowed"] is False
+    preflight_receipt = json.loads(
+        workspace.artifacts.resolve(
+            preflight["receipt_artifact_digest"]
+        ).read_text(encoding="utf-8")
+    )
+    assert preflight_receipt["database_access_allowed"] is False
+    assert preflight_receipt["network_access_allowed"] is False
+    assert preflight_receipt["resolver_dispatch_available"] is False
+
     reference = observed["reference"]
     assert reference["status"] == "ACCEPTED"
     assert reference["commit_sha"] == commit
@@ -219,6 +237,21 @@ def test_phase_a_protected_evaluation_uses_pinned_reference_commit(tmp_path: Pat
     assert persisted_receipt["database_access_allowed"] is False
     assert persisted_receipt["network_access_allowed"] is False
     assert persisted_receipt["resolver_dispatch_available"] is False
+
+    metrics = {
+        row["metricId"]: row
+        for row in metric_rows_for_ui(
+            summarize_phase_a_experiment(
+                workspace,
+                experiment.id,
+                DatasetSplit.TEST,
+            )
+        )
+    }
+    assert metrics["zero_model_route_violations"]["measured"] is True
+    assert metrics["zero_model_route_violations"]["value"] == 0.0
+    assert metrics["unsupported_mechanics_authority"]["measured"] is True
+    assert metrics["unsupported_mechanics_authority"]["value"] == 0.0
 
 
 

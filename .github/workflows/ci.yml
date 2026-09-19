@@ -184,9 +184,13 @@ jobs:
           }
           if (Test-Path $installedExe) { throw "Uninstall left application executable behind" }
           if (-not (Test-Path $sentinel)) { throw "Uninstall removed external workspace data" }
-      - name: Add representative performance capture helper
+      - name: Add candidate handoff material
         shell: pwsh
-        run: Copy-Item scripts/run_phase4_performance.cmd deployment/release/Run-Representative-Performance.cmd
+        run: |
+          Copy-Item scripts/run_phase4_performance.cmd deployment/release/Run-Representative-Performance.cmd
+          Copy-Item docs/TESTING_READY_HANDOFF.md deployment/release/TESTING_READY_HANDOFF.md
+          Copy-Item docs/TESTING_READY_RELEASE_NOTES.md deployment/release/TESTING_READY_RELEASE_NOTES.md
+          Copy-Item docs/PHASE4_EXIT_AUDIT.md deployment/release/PHASE4_EXIT_AUDIT.md
       - name: Package testing candidate + provenance
         shell: pwsh
         run: >

@@ -41,6 +41,8 @@ class TrainingOption:
     default_text_key: str = "text"
     default_label_key: str = "class"
     uses_payload_keys: bool = True
+    reproducibility_mode: str = "DETERMINISTIC"
+    metric_tolerances: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

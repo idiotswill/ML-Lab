@@ -47,6 +47,21 @@ class ReferenceValidationReceipt:
     receipt_artifact_digest: str
 
 
+@dataclass(frozen=True, slots=True)
+class ReferencePreflightReceipt:
+    status: str
+    commit_sha: str
+    contract_version: str
+    request_sha256: str
+    validator: str
+    fresh_process: bool
+    model_call_allowed: bool
+    authority_mutation_allowed: bool
+    error_code: str | None
+    error_message: str | None
+    receipt_artifact_digest: str
+
+
 class PhaseAReferenceValidator:
     """Run Frankenhomie's pinned residual validator without campaign authority.
 
@@ -128,6 +143,124 @@ class PhaseAReferenceValidator:
                 shutil.rmtree(destination)
             shutil.move(str(extract_root), str(destination))
         return MaterializedPhaseAContract(commit_sha, destination)
+
+    def preflight(
+        self,
+        *,
+        repository: Path,
+        ref: str,
+        request: object,
+        timeout_seconds: float = 30.0,
+    ) -> ReferencePreflightReceipt:
+        """Ask the pinned Frankenhomie contract whether a provider call is allowed."""
+        materialized = self.materialize(repository, ref)
+        request_sha = _sha256_json(request)
+        with tempfile.TemporaryDirectory(
+            prefix=f"preflight-{materialized.commit_sha[:12]}-",
+            dir=self.jobs_root,
+        ) as temp_dir:
+            root = Path(temp_dir)
+            input_path = root / "input.json"
+            receipt_path = root / "receipt.json"
+            spec_path = root / "spec.json"
+            input_path.write_text(
+                canonical_json({"request": request}) + "\n",
+                encoding="utf-8",
+            )
+            spec_path.write_text(
+                canonical_json(
+                    {
+                        "format_version": 1,
+                        "commit_sha": materialized.commit_sha,
+                        "source_root": str(materialized.source_root),
+                        "input_path": str(input_path),
+                        "receipt_path": str(receipt_path),
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            isolated_home = root / "asterra-home"
+            isolated_home.mkdir()
+            env = os.environ.copy()
+            for key in tuple(env):
+                if key.startswith("ASTERRA_"):
+                    env.pop(key, None)
+            env.update(
+                {
+                    "ASTERRA_HOME": str(isolated_home),
+                    "ASTERRA_CONFIG_FILE": str(root / "no-config.json"),
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                }
+            )
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+            try:
+                completed = subprocess.run(
+                    application_command("--phase-a-preflight-child", str(spec_path)),
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=timeout_seconds,
+                    cwd=root,
+                    env=env,
+                    creationflags=flags,
+                )
+            except subprocess.TimeoutExpired as exc:
+                decoded = _preflight_error_receipt(
+                    materialized.commit_sha,
+                    request_sha,
+                    "REFERENCE_PREFLIGHT_TIMEOUT",
+                    str(exc),
+                )
+            else:
+                if receipt_path.is_file():
+                    decoded = _read_object(receipt_path)
+                else:
+                    message = completed.stderr[-2000:] or completed.stdout[-2000:]
+                    decoded = _preflight_error_receipt(
+                        materialized.commit_sha,
+                        request_sha,
+                        "REFERENCE_PREFLIGHT_NO_RECEIPT",
+                        message or f"child exited with {completed.returncode}",
+                    )
+
+        _validate_preflight_receipt_identity(
+            decoded,
+            commit_sha=materialized.commit_sha,
+            request_sha=request_sha,
+        )
+        artifact = self.workspace.artifacts.commit_bytes(
+            (canonical_json(decoded) + "\n").encode("utf-8"),
+            media_type="application/vnd.ml-lab.phase-a-preflight-receipt+json",
+            metadata={
+                "commit_sha": materialized.commit_sha,
+                "contract_version": PHASE_A_CONTRACT_VERSION,
+                "status": str(decoded.get("status")),
+            },
+        )
+        return ReferencePreflightReceipt(
+            status=str(decoded["status"]),
+            commit_sha=str(decoded["commit_sha"]),
+            contract_version=str(decoded["contract_version"]),
+            request_sha256=str(decoded["request_sha256"]),
+            validator=str(decoded["validator"]),
+            fresh_process=bool(decoded["fresh_process"]),
+            model_call_allowed=bool(decoded["model_call_allowed"]),
+            authority_mutation_allowed=bool(decoded["authority_mutation_allowed"]),
+            error_code=(
+                str(decoded["error_code"])
+                if decoded.get("error_code") is not None
+                else None
+            ),
+            error_message=(
+                str(decoded["error_message"])
+                if decoded.get("error_message") is not None
+                else None
+            ),
+            receipt_artifact_digest=artifact.digest,
+        )
 
     def validate(
         self,
@@ -253,6 +386,94 @@ class PhaseAReferenceValidator:
         )
 
 
+def run_reference_preflight_child(spec_path: Path) -> int:
+    """Fresh-process gate probe that never calls a real model/provider."""
+    try:
+        spec = _read_object(spec_path)
+        commit_sha = _required_text(spec, "commit_sha")
+        source_root = Path(_required_text(spec, "source_root")).resolve()
+        input_path = Path(_required_text(spec, "input_path")).resolve()
+        receipt_path = Path(_required_text(spec, "receipt_path")).resolve()
+        payload = _read_object(input_path)
+        request = payload.get("request")
+        request_sha = _sha256_json(request)
+    except Exception as exc:
+        return _write_preflight_bootstrap_error(spec_path, exc)
+
+    _install_reference_sandbox()
+    try:
+        app_root = source_root / _APP_ROOT
+        if not app_root.is_dir():
+            raise FileNotFoundError(app_root)
+        sys.path.insert(0, str(app_root))
+        module = importlib.import_module("asterra.semantic_residual")
+        namespace = vars(module)
+        request_type = cast(Any, namespace["ResidualSemanticRequest"])
+        residual_error_type = cast(type[Exception], namespace["ResidualSemanticError"])
+        run_residual = cast(Any, namespace["run_residual_semantics"])
+        request_model = request_type.model_validate(request)
+
+        class ProviderReached(RuntimeError):
+            pass
+
+        class PreflightProvider:
+            provider_name = "ml-lab-preflight-sentinel"
+
+            def resolve(self, _request: object) -> Never:
+                raise ProviderReached("PINNED_PROVIDER_BOUNDARY_REACHED")
+
+        try:
+            run_residual(PreflightProvider(), request_model)
+        except ProviderReached:
+            receipt = _preflight_child_receipt(
+                status="MODEL_ALLOWED",
+                commit_sha=commit_sha,
+                request_sha=request_sha,
+                model_call_allowed=True,
+                error_code=None,
+                error_message=None,
+            )
+        except residual_error_type as exc:
+            receipt = _preflight_child_receipt(
+                status="MODEL_BLOCKED",
+                commit_sha=commit_sha,
+                request_sha=request_sha,
+                model_call_allowed=False,
+                error_code=str(vars(exc).get("code", type(exc).__name__)),
+                error_message=str(exc),
+            )
+        else:
+            receipt = _preflight_child_receipt(
+                status="ERROR",
+                commit_sha=commit_sha,
+                request_sha=request_sha,
+                model_call_allowed=False,
+                error_code="REFERENCE_PREFLIGHT_PROVIDER_NOT_REACHED",
+                error_message="Pinned residual call returned without reaching provider boundary.",
+            )
+    except ValidationError as exc:
+        receipt = _preflight_child_receipt(
+            status="ERROR",
+            commit_sha=commit_sha,
+            request_sha=request_sha,
+            model_call_allowed=False,
+            error_code="CONTRACT_VALIDATION_ERROR",
+            error_message=str(exc)[:2000],
+        )
+    except Exception as exc:
+        receipt = _preflight_child_receipt(
+            status="ERROR",
+            commit_sha=commit_sha,
+            request_sha=request_sha,
+            model_call_allowed=False,
+            error_code=_exception_code(exc),
+            error_message=f"{type(exc).__name__}: {exc}"[:2000],
+        )
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(canonical_json(receipt) + "\n", encoding="utf-8")
+    return 0 if receipt["status"] in {"MODEL_ALLOWED", "MODEL_BLOCKED"} else 3
+
+
 def run_reference_validator_child(spec_path: Path) -> int:
     """Fresh-process entry point. Never receives a workspace or campaign DB path."""
     try:
@@ -346,6 +567,49 @@ def _install_reference_sandbox() -> None:
     socket.create_connection = cast(Any, forbidden_network)
 
 
+def _preflight_child_receipt(
+    *,
+    status: str,
+    commit_sha: str,
+    request_sha: str,
+    model_call_allowed: bool,
+    error_code: str | None,
+    error_message: str | None,
+) -> dict[str, object]:
+    return {
+        "format_version": 1,
+        "status": status,
+        "commit_sha": commit_sha,
+        "contract_version": PHASE_A_CONTRACT_VERSION,
+        "request_sha256": request_sha,
+        "validator": "frankenhomie.run_residual_semantics.preflight",
+        "fresh_process": True,
+        "model_call_allowed": model_call_allowed,
+        "authority_mutation_allowed": False,
+        "database_access_allowed": False,
+        "network_access_allowed": False,
+        "resolver_dispatch_available": False,
+        "error_code": error_code,
+        "error_message": error_message,
+    }
+
+
+def _preflight_error_receipt(
+    commit_sha: str,
+    request_sha: str,
+    error_code: str,
+    error_message: str,
+) -> dict[str, object]:
+    return _preflight_child_receipt(
+        status="ERROR",
+        commit_sha=commit_sha,
+        request_sha=request_sha,
+        model_call_allowed=False,
+        error_code=error_code,
+        error_message=error_message[:2000],
+    )
+
+
 def _child_receipt(
     *,
     status: str,
@@ -401,6 +665,29 @@ def _exception_code(exc: Exception) -> str:
     if isinstance(exc, ModuleNotFoundError):
         return "REFERENCE_IMPORT_DEPENDENCY_MISSING"
     return "REFERENCE_VALIDATOR_ERROR"
+
+
+def _write_preflight_bootstrap_error(spec_path: Path, exc: Exception) -> int:
+    try:
+        raw = _read_object(spec_path)
+        receipt_path = Path(str(raw.get("receipt_path", "")))
+        commit_sha = str(raw.get("commit_sha", "UNKNOWN"))
+        if receipt_path:
+            receipt_path.write_text(
+                canonical_json(
+                    _preflight_error_receipt(
+                        commit_sha,
+                        "UNKNOWN",
+                        "REFERENCE_PREFLIGHT_CHILD_BOOTSTRAP_ERROR",
+                        f"{type(exc).__name__}: {exc}",
+                    )
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+    except Exception:
+        pass
+    return 4
 
 
 def _write_child_bootstrap_error(spec_path: Path, exc: Exception) -> int:
@@ -462,6 +749,30 @@ def _materialization_matches(marker: Path, commit_sha: str) -> bool:
         and decoded.get("contract_version") == PHASE_A_CONTRACT_VERSION
         and (marker.parent / _APP_ROOT / "asterra" / "semantic_residual.py").is_file()
     )
+
+
+def _validate_preflight_receipt_identity(
+    receipt: dict[str, object],
+    *,
+    commit_sha: str,
+    request_sha: str,
+) -> None:
+    if receipt.get("commit_sha") != commit_sha:
+        raise ValueError("Preflight receipt commit identity mismatch.")
+    if receipt.get("contract_version") != PHASE_A_CONTRACT_VERSION:
+        raise ValueError("Preflight receipt contract version mismatch.")
+    if receipt.get("request_sha256") != request_sha:
+        raise ValueError("Preflight receipt request digest mismatch.")
+    if receipt.get("fresh_process") is not True:
+        raise ValueError("Reference preflight must come from a fresh process.")
+    if receipt.get("authority_mutation_allowed") is not False:
+        raise ValueError("Reference preflight receipt granted mutation authority.")
+    status = receipt.get("status")
+    model_call_allowed = receipt.get("model_call_allowed")
+    if status == "MODEL_ALLOWED" and model_call_allowed is not True:
+        raise ValueError("MODEL_ALLOWED preflight did not authorize a model call.")
+    if status != "MODEL_ALLOWED" and model_call_allowed is not False:
+        raise ValueError("Blocked/error preflight incorrectly authorized a model call.")
 
 
 def _validate_receipt_identity(

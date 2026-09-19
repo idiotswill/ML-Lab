@@ -75,6 +75,22 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
         window.show()
         app.processEvents()
 
+        # Native Windows may clamp the pre-show geometry to the current desktop.
+        # Re-assert the release-test geometry after the HWND exists, then fail closed
+        # rather than labeling a smaller capture as 1366x768 evidence.
+        for _ in range(3):
+            window.setWidth(1366)
+            window.setHeight(768)
+            app.processEvents()
+            time.sleep(0.05)
+
+        if window.width() != 1366 or window.height() != 768:
+            controller.shutdown()
+            raise RuntimeError(
+                "Release visual smoke could not establish the required "
+                f"1366x768 logical window; got {window.width()}x{window.height()}."
+            )
+
         scale = os.environ.get("QT_SCALE_FACTOR", "1")
         scale_label = scale.replace(".", "_")
         output_dir.mkdir(parents=True, exist_ok=True)

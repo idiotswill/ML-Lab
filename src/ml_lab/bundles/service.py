@@ -21,6 +21,7 @@ from ml_lab.experiments.service import ExperimentService
 from ml_lab.failures.service import FailureService
 from ml_lab.models.registry import ModelRegistryService
 from ml_lab.storage.workspace import Workspace
+from ml_lab.trainers.service import packaged_reproducibility
 
 _FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
@@ -97,6 +98,22 @@ class BundleService:
             raise RuntimeError("Trainer reproduction spec has invalid input partitions.")
         if {"TEST", "REDTEAM"} & set(input_partitions):
             raise RuntimeError("Protected partitions escaped into reproduction spec.")
+
+        environment = json.loads(experiment.environment_json)
+        if not isinstance(environment, dict):
+            raise ValueError("Experiment environment must be a JSON object.")
+        reproducibility = packaged_reproducibility(
+            experiment.trainer_id,
+            experiment.runtime_pack_id,
+        )
+        if reproducibility is None:
+            raw_reproducibility = environment.get("reproducibility")
+            if not isinstance(raw_reproducibility, dict):
+                raise RuntimeError(
+                    "Release candidate requires an explicit reproducibility declaration."
+                )
+            reproducibility = _normalize_reproducibility(raw_reproducibility)
+        reproduction["reproducibility"] = reproducibility
 
         failures = self._experiment_failures(experiment.id)
         contract_payload = self._contract_payload(experiment.contract_snapshot_id)
@@ -411,6 +428,45 @@ def _zip_info(name: str) -> zipfile.ZipInfo:
     info.create_system = 3
     info.external_attr = 0o100644 << 16
     return info
+
+
+def _normalize_reproducibility(value: dict[str, object]) -> dict[str, object]:
+    mode = value.get("mode")
+    if mode not in {"DETERMINISTIC", "NONDETERMINISTIC"}:
+        raise ValueError(
+            "Reproducibility mode must be DETERMINISTIC or NONDETERMINISTIC."
+        )
+    raw_tolerances = value.get("metric_tolerances")
+    if not isinstance(raw_tolerances, dict):
+        raise ValueError("Reproducibility metric_tolerances must be an object.")
+    tolerances: dict[str, float] = {}
+    for raw_metric, raw_tolerance in raw_tolerances.items():
+        metric = str(raw_metric).strip()
+        if not metric:
+            raise ValueError("Reproducibility tolerance metric id cannot be empty.")
+        if (
+            isinstance(raw_tolerance, bool)
+            or not isinstance(raw_tolerance, (int, float))
+            or float(raw_tolerance) < 0
+        ):
+            raise ValueError(
+                f"Reproducibility tolerance for {metric!r} must be >= 0."
+            )
+        tolerances[metric] = float(raw_tolerance)
+    if mode == "NONDETERMINISTIC" and not tolerances:
+        raise ValueError(
+            "Nondeterministic reproducibility declarations require explicit tolerances."
+        )
+    result: dict[str, object] = {
+        "mode": str(mode),
+        "metric_tolerances": dict(sorted(tolerances.items())),
+    }
+    comparison_policy = value.get("comparison_policy")
+    if comparison_policy is not None:
+        if not isinstance(comparison_policy, str) or not comparison_policy.strip():
+            raise ValueError("Reproducibility comparison_policy must be a non-empty string.")
+        result["comparison_policy"] = comparison_policy.strip()
+    return result
 
 
 def _json_bytes(value: object) -> bytes:

@@ -14,6 +14,7 @@ from ml_lab.adapters.phase_a_provider import (
 )
 from ml_lab.adapters.phase_a_reference import (
     PhaseAReferenceValidator,
+    ReferencePreflightReceipt,
     ReferenceValidationReceipt,
 )
 from ml_lab.baselines.service import BaselineRunResult, BaselineService
@@ -143,6 +144,11 @@ def run_phase_a_local_provider_baseline(
             request=request,
             proposal=proposal,
         ),
+        reference_preflight=lambda request: reference.preflight(
+            repository=Path(snapshot.repo_path),
+            ref=snapshot.commit_sha,
+            request=request,
+        ),
     )
     return baseline.run(
         experiment.id,
@@ -186,6 +192,10 @@ def _provider_evaluator(
         [Mapping[str, object], Mapping[str, object]],
         ReferenceValidationReceipt,
     ],
+    reference_preflight: Callable[
+        [Mapping[str, object]],
+        ReferencePreflightReceipt,
+    ],
 ) -> CaseEvaluator:
     last_provider: dict[str, object] = {}
 
@@ -206,6 +216,7 @@ def _provider_evaluator(
     base = make_phase_a_case_evaluator(
         predictor=predict,
         reference_check=reference_check,
+        reference_preflight=reference_preflight,
     )
 
     def evaluate(row: Mapping[str, object]) -> CaseOutcome:

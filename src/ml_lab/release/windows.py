@@ -94,6 +94,7 @@ def create_windows_portable(
     nuitka_version: str,
     installer_recipe: Path | None = None,
     installer_path: Path | None = None,
+    testing_candidate: bool = False,
 ) -> tuple[Path, Path]:
     if not source_commit.strip():
         raise ValueError("source_commit is required")
@@ -146,7 +147,11 @@ def create_windows_portable(
     manifest: dict[str, object] = {
         "schema_version": _MANIFEST_SCHEMA_VERSION,
         "build_kind": (
-            "development_windows_package"
+            "testing_candidate_windows_package"
+            if testing_candidate and installer_path is not None
+            else "testing_candidate_portable"
+            if testing_candidate
+            else "development_windows_package"
             if installer_path is not None
             else "development_portable"
         ),
@@ -194,6 +199,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--lock", required=True, type=Path)
     parser.add_argument("--release-label", default=f"v{__version__}")
+    parser.add_argument("--application-version")
+    parser.add_argument("--testing-candidate", action="store_true")
     parser.add_argument("--installer-recipe", type=Path)
     parser.add_argument("--installer", type=Path)
     return parser.parse_args(argv)
@@ -206,13 +213,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         output_dir=args.output,
         source_commit=args.source_commit,
         lock_path=args.lock,
-        version=__version__,
+        version=args.application_version or __version__,
         release_label=args.release_label,
         python_version=sys.version.split()[0],
         qt_version=metadata.version("PySide6"),
         nuitka_version=metadata.version("Nuitka"),
         installer_recipe=args.installer_recipe,
         installer_path=args.installer,
+        testing_candidate=args.testing_candidate,
     )
     print(archive_path)
     print(manifest_path)

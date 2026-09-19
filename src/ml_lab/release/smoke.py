@@ -63,7 +63,13 @@ def prepare_clean_machine_smoke(workspace_path: Path) -> dict[str, object]:
         runtime_pack_id="phase4-smoke-runtime",
         config={"purpose": "clean-machine-smoke"},
         seed=404,
-        environment={"kind": "installed-build-smoke"},
+        environment={
+            "kind": "installed-build-smoke",
+            "reproducibility": {
+                "mode": "DETERMINISTIC",
+                "metric_tolerances": {},
+            },
+        },
     )
     experiments.start(experiment.id)
     model_artifact = workspace.artifacts.commit_bytes(

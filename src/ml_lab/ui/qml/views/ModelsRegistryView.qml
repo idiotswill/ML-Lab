@@ -248,10 +248,13 @@ Item {
 
                         Text {
                             anchors.centerIn: parent
+                            width: Math.max(1, parent.width - 24)
                             visible: modelList.count === 0
                             text: "No registered models on this page."
                             color: Theme.dim
                             font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
                         }
                     }
 

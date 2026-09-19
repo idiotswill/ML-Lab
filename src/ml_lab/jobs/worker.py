@@ -41,6 +41,37 @@ def task_self_test(spec: JobSpec, staging: Path) -> dict[str, object]:
     return {"ok": True, "steps": steps}
 
 
+def task_performance_load(spec: JobSpec, staging: Path) -> dict[str, object]:
+    duration = max(0.25, min(float(spec.payload.get("duration_seconds", 20.0)), 120.0))
+    block = b"ml-lab-performance-load" * 65536
+    started = time.perf_counter()
+    last_emit = started
+    iterations = 0
+    digest = b""
+    while True:
+        if _cancelled(staging):
+            raise InterruptedError("Cancellation requested")
+        now = time.perf_counter()
+        if now - started >= duration:
+            break
+        digest = hashlib.sha256(block).digest()
+        iterations += 1
+        if now - last_emit >= 0.25:
+            elapsed = now - started
+            _emit(
+                "progress",
+                progress=min(0.99, elapsed / duration),
+                message=f"Performance load {elapsed:.1f}s / {duration:.1f}s",
+            )
+            last_emit = now
+    return {
+        "ok": True,
+        "duration_seconds": duration,
+        "iterations": iterations,
+        "digest_prefix": digest.hex()[:16],
+    }
+
+
 def task_hash_file(spec: JobSpec, staging: Path) -> dict[str, object]:
     source = Path(str(spec.payload["path"]))
     total = source.stat().st_size
@@ -216,6 +247,7 @@ def _path_list(
 
 TASKS: dict[str, Task] = {
     "core.self_test": task_self_test,
+    "core.performance_load": task_performance_load,
     "core.hash_file": task_hash_file,
     "trainer.sparse_nb.v1": task_sparse_nb_train,
     "trainer.phase_a_sparse.v1": task_phase_a_sparse_train,

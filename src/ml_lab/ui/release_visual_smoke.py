@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 
 from ml_lab.core.config import AppConfig, user_config_dir
@@ -107,6 +108,40 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
                 controller.shutdown()
                 raise RuntimeError(f"Could not capture release visual evidence: {target}")
             captures.append(target.name)
+
+        active_jobs = [
+            job
+            for job in controller.jobs
+            if job.get("status") in {"QUEUED", "RUNNING"}
+        ]
+        deadline = time.monotonic() + 5.0
+        while active_jobs and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.05)
+            active_jobs = [
+                job
+                for job in controller.jobs
+                if job.get("status") in {"QUEUED", "RUNNING"}
+            ]
+
+        if active_jobs:
+            for job in active_jobs:
+                controller.cancelJob(str(job["id"]))
+            deadline = time.monotonic() + 5.0
+            while active_jobs and time.monotonic() < deadline:
+                app.processEvents()
+                time.sleep(0.05)
+                active_jobs = [
+                    job
+                    for job in controller.jobs
+                    if job.get("status") in {"QUEUED", "RUNNING"}
+                ]
+
+        if active_jobs:
+            controller.shutdown()
+            raise RuntimeError(
+                "Release visual smoke worker did not terminate before workspace teardown."
+            )
 
         payload = {
             "ok": True,

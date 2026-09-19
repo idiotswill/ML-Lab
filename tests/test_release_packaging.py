@@ -148,3 +148,35 @@ def test_installer_recipe_stays_per_user_and_x64_targeted() -> None:
     assert "DefaultDirName={localappdata}" in recipe
     assert "ArchitecturesAllowed=x64compatible" in recipe
     assert "ArchitecturesInstallIn64BitMode=x64compatible" in recipe
+
+
+def test_windows_package_can_be_marked_testing_candidate_without_testing_ready(
+    tmp_path: Path,
+) -> None:
+    dist, lock = _build_fixture(tmp_path)
+    recipe = tmp_path / "MLLab.iss"
+    recipe.write_text("PrivilegesRequired=lowest\n", encoding="utf-8")
+    installer = tmp_path / "MLLab-Setup-v0.1.0-testing.1-x64.exe"
+    installer.write_bytes(b"candidate-installer")
+
+    _, manifest = create_windows_portable(
+        dist_dir=dist,
+        output_dir=tmp_path / "out",
+        source_commit="candidate123",
+        lock_path=lock,
+        version="0.1.0-testing.1",
+        release_label="v0.1.0-testing.1",
+        python_version="3.12.10",
+        qt_version="6.11.2",
+        nuitka_version="2.8.9",
+        installer_recipe=recipe,
+        installer_path=installer,
+        testing_candidate=True,
+    )
+
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    assert payload["build_kind"] == "testing_candidate_windows_package"
+    assert payload["application"]["version"] == "0.1.0-testing.1"
+    assert payload["application"]["release_label"] == "v0.1.0-testing.1"
+    assert payload["testing_ready"] is False
+    assert payload["integration_gate"] == "NO_GO"

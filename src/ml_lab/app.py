@@ -33,6 +33,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--phase-a-preflight-child",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--phase-a-provider-child",
         type=Path,
         help=argparse.SUPPRESS,
@@ -106,6 +111,10 @@ def main(argv: list[str] | None = None) -> int:
         from ml_lab.adapters.phase_a_reference import run_reference_validator_child
 
         return run_reference_validator_child(args.phase_a_validator_child)
+    if args.phase_a_preflight_child:
+        from ml_lab.adapters.phase_a_reference import run_reference_preflight_child
+
+        return run_reference_preflight_child(args.phase_a_preflight_child)
     if args.phase_a_provider_child:
         from ml_lab.adapters.phase_a_provider import run_local_provider_child
 

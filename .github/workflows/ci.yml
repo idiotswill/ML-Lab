@@ -104,6 +104,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Compiled QML smoke failed" }
           & $exe.FullName --performance-probe
           if ($LASTEXITCODE -ne 0) { throw "Compiled performance probe failed" }
+          $env:QT_QPA_PLATFORM = "windows"
           $performanceSmoke = Join-Path $PWD "deployment\release\performance-smoke.json"
           & $exe.FullName --release-performance-evidence $performanceSmoke --performance-smoke
           if ($LASTEXITCODE -ne 0) { throw "Compiled release performance evidence smoke failed" }

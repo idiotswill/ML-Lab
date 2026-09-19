@@ -7,7 +7,7 @@ import tempfile
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from ml_lab.core.process import application_command
 from ml_lab.datasets.service import DatasetService
@@ -356,8 +356,8 @@ def _measure_navigation(
     done: Callable[[], bool] | None = None,
     timeout_seconds: float | None = None,
 ) -> dict[str, object]:
-    process_events = getattr(app, "processEvents")
-    set_property = getattr(window, "setProperty")
+    process_events = cast(Any, app).processEvents
+    set_property = cast(Any, window).setProperty
     minimum_end = time.monotonic() + duration_seconds
     hard_end = time.monotonic() + (timeout_seconds or duration_seconds)
     expected_sleep = 0.01

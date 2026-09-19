@@ -56,6 +56,7 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
 
         engine = QQmlApplicationEngine()
         engine.rootContext().setContextProperty("appController", controller)
+        engine.setInitialProperties({"visualSmokeMode": True})
         qml_path = Path(__file__).parent / "qml" / "Main.qml"
         engine.load(QUrl.fromLocalFile(str(qml_path)))
         app.processEvents()
@@ -71,18 +72,14 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
             return {"ok": False, "error": "QML root is not a QQuickWindow"}
         window = raw_window
 
-        # GitHub-hosted Windows desktops are smaller than the required 1366x768
-        # release-test viewport. QQuickWindow supports grabWindow() while hidden,
-        # so keep the native Windows window created but not exposed. This prevents
-        # the desktop/window manager from clamping the logical viewport while still
-        # exercising the compiled installed QML on the Windows QPA + requested DPI.
+        # The root is initialized hidden at 1366x768 before QML creation so the
+        # hosted Windows desktop cannot clamp the release-test viewport.
         app.setQuitOnLastWindowClosed(False)
-        window.hide()
-        app.processEvents()
-        window.setWidth(1366)
-        window.setHeight(768)
         app.processEvents()
 
+        if window.isVisible():
+            controller.shutdown()
+            raise RuntimeError("Release visual smoke root unexpectedly became visible.")
         if window.width() != 1366 or window.height() != 768:
             controller.shutdown()
             raise RuntimeError(

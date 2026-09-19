@@ -79,6 +79,26 @@ def training_options(adapter_id: str) -> tuple[TrainingOption, ...]:
     )
 
 
+def packaged_reproducibility(
+    trainer_id: str,
+    runtime_pack_id: str,
+) -> dict[str, object] | None:
+    """Return the explicit reproducibility declaration for a packaged trainer."""
+    for option in _BUILTIN_TRAINING_OPTIONS:
+        if (
+            option.trainer_id == trainer_id
+            and option.runtime_pack_id == runtime_pack_id
+        ):
+            return {
+                "mode": option.reproducibility_mode,
+                "metric_tolerances": {
+                    metric_id: tolerance
+                    for metric_id, tolerance in option.metric_tolerances
+                },
+            }
+    return None
+
+
 class TrainingService:
     """UI-facing training orchestration over split-safe immutable artifacts."""
 

@@ -104,6 +104,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Compiled QML smoke failed" }
           & $exe.FullName --performance-probe
           if ($LASTEXITCODE -ne 0) { throw "Compiled performance probe failed" }
+          $performanceSmoke = Join-Path $PWD "deployment\release\performance-smoke.json"
+          & $exe.FullName --release-performance-evidence $performanceSmoke --performance-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Compiled release performance evidence smoke failed" }
+          if (-not (Test-Path $performanceSmoke)) {
+              throw "Compiled release performance evidence receipt was not written"
+          }
       - name: Build developer installer
         shell: pwsh
         run: ./scripts/build_windows_installer.ps1

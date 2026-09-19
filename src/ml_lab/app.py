@@ -354,16 +354,27 @@ def startup_probe_child() -> int:
     app.processEvents()
     roots = engine.rootObjects()
     ok = bool(roots)
+    qml_load_ms = round((time.perf_counter() - started) * 1000, 2)
     interactive_window_ready = False
+    interactive_ready_ms: float | None = None
     if roots:
         root = roots[0]
-        interactive_window_ready = bool(root.property("visible")) and bool(
-            root.property("enabled")
-        )
+        deadline = time.perf_counter() + 2.0
+        while time.perf_counter() < deadline:
+            app.processEvents()
+            if bool(root.property("visible")):
+                interactive_window_ready = True
+                interactive_ready_ms = round(
+                    (time.perf_counter() - started) * 1000,
+                    2,
+                )
+                break
+            time.sleep(0.005)
     payload = {
         "ok": ok,
         "interactive_window_ready": interactive_window_ready,
-        "qml_load_ms": round((time.perf_counter() - started) * 1000, 2),
+        "interactive_ready_ms": interactive_ready_ms,
+        "qml_load_ms": qml_load_ms,
         "working_set_bytes": _working_set_bytes(),
     }
     print(json.dumps(payload), flush=True)

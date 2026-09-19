@@ -120,11 +120,31 @@ def run_release_performance_evidence(
         "worker_load_no_over_100ms_stall": worker_stalls_ok,
         "cancellation_visible_within_1s": cancellation_prompt and worker_cancelled,
     }
+    hard_checks_pass = all(hard_checks.values())
+    instrumentation_checks = {
+        "startup_interactive_signal": bool(startup.get("interactive_window_ready")),
+        "idle_memory_measured": _is_number(idle_memory.get("idle_working_set_mb")),
+        "ordinary_navigation_sampled": _gt_zero(
+            _nested(ui, "idle_navigation", "samples")
+        ),
+        "bounded_paging_observed": bounded_100k,
+        "background_import_completed_and_sampled": import_complete
+        and _gt_zero(_nested(ui, "background_import", "samples")),
+        "worker_load_sampled": _gt_zero(_nested(ui, "worker_load", "samples")),
+        "cancellation_observed": worker_cancelled
+        and _is_number(_nested(ui, "cancellation", "visible_ack_ms")),
+    }
+    instrumentation_checks_pass = all(instrumentation_checks.values())
     gate_evaluable = not smoke and os.name == "nt" and row_count == _FULL_ROWS
+    overall_ok = (
+        instrumentation_checks_pass and hard_checks_pass
+        if gate_evaluable
+        else instrumentation_checks_pass
+    )
     payload = {
         "format_version": 1,
         "kind": "ML_LAB_PHASE4_REPRESENTATIVE_PERFORMANCE",
-        "ok": True,
+        "ok": overall_ok,
         "smoke": smoke,
         "gate_evaluable": gate_evaluable,
         "representative_hardware_review_required": True,
@@ -133,7 +153,9 @@ def run_release_performance_evidence(
         "idle_memory": idle_memory,
         "ui": ui,
         "hard_checks": hard_checks,
-        "hard_checks_pass": all(hard_checks.values()),
+        "hard_checks_pass": hard_checks_pass,
+        "instrumentation_checks": instrumentation_checks,
+        "instrumentation_checks_pass": instrumentation_checks_pass,
         "targets": {
             "startup_target_ms": 2500,
             "startup_hard_ms": 4000,
@@ -171,6 +193,7 @@ def _collect_startup(env: Mapping[str, str]) -> dict[str, object]:
     return {
         "process_start_to_qml_ready_ms": elapsed_ms,
         "child_qml_load_ms": details.get("qml_load_ms"),
+        "child_interactive_ready_ms": details.get("interactive_ready_ms"),
         "interactive_window_ready": bool(details.get("interactive_window_ready")),
         "working_set_at_ready_mb": _bytes_to_mb(working_set),
         "target_ms": 2500,
@@ -453,20 +476,20 @@ def _nested(value: Mapping[str, object], first: str, second: str) -> object:
     return child.get(second)
 
 
+def _is_number(value: object) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float))
+
+
+def _gt_zero(value: object) -> bool:
+    return _is_number(value) and float(cast(int | float, value)) > 0.0
+
+
 def _le(value: object, limit: float) -> bool:
-    return (
-        not isinstance(value, bool)
-        and isinstance(value, (int, float))
-        and float(value) <= limit
-    )
+    return _is_number(value) and float(cast(int | float, value)) <= limit
 
 
 def _eq_zero(value: object) -> bool:
-    return (
-        not isinstance(value, bool)
-        and isinstance(value, (int, float))
-        and float(value) == 0.0
-    )
+    return _is_number(value) and float(cast(int | float, value)) == 0.0
 
 
 def _write_receipt(path: Path, payload: Mapping[str, object]) -> None:

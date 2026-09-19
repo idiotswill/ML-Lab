@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -425,20 +426,82 @@ class Database:
     def schema_version(self) -> int:
         return self._current_version()
 
+    @property
+    def pre_migration_backup_path(self) -> Path:
+        return self.path.with_suffix(self.path.suffix + ".pre-migrate.bak")
+
+    def restore_pre_migration_backup(self) -> int:
+        backup_path = self.pre_migration_backup_path
+        if not backup_path.is_file():
+            raise FileNotFoundError(
+                f"Pre-migration backup is not present: {backup_path}"
+            )
+
+        restore_path = self.path.with_suffix(self.path.suffix + ".restore.tmp")
+        restore_path.unlink(missing_ok=True)
+        try:
+            source = sqlite3.connect(backup_path)
+            try:
+                integrity = source.execute("PRAGMA integrity_check").fetchone()
+                if integrity is None or integrity[0] != "ok":
+                    raise RuntimeError(
+                        "Pre-migration backup failed SQLite integrity_check."
+                    )
+                target = sqlite3.connect(restore_path)
+                try:
+                    source.backup(target)
+                    target.commit()
+                finally:
+                    target.close()
+            finally:
+                source.close()
+
+            with restore_path.open("rb+") as restored:
+                restored.flush()
+                os.fsync(restored.fileno())
+            for suffix in ("-wal", "-shm"):
+                Path(f"{self.path}{suffix}").unlink(missing_ok=True)
+            os.replace(restore_path, self.path)
+        finally:
+            restore_path.unlink(missing_ok=True)
+        return self._current_version()
+
     def _current_version(self) -> int:
         if not self.path.exists() or self.path.stat().st_size == 0:
             return 0
         try:
             with self.connection() as conn:
+                meta_table = conn.execute(
+                    "SELECT 1 FROM sqlite_master "
+                    "WHERE type='table' AND name='schema_meta'"
+                ).fetchone()
+                if meta_table is None:
+                    return 0
                 row = conn.execute(
                     "SELECT value FROM schema_meta WHERE key='schema_version'"
                 ).fetchone()
-        except sqlite3.OperationalError:
-            return 0
-        return int(row[0]) if row else 0
+        except sqlite3.DatabaseError as exc:
+            raise RuntimeError(
+                f"Workspace database metadata is unreadable: {exc}"
+            ) from exc
+        if row is None:
+            raise RuntimeError(
+                "Workspace database metadata is corrupt: schema_version is missing."
+            )
+        try:
+            version = int(row[0])
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"Workspace database metadata has invalid schema_version {row[0]!r}."
+            ) from exc
+        if version < 0:
+            raise RuntimeError(
+                f"Workspace database metadata has invalid schema_version {version}."
+            )
+        return version
 
     def _backup_before_migration(self) -> Path:
-        backup_path = self.path.with_suffix(self.path.suffix + ".pre-migrate.bak")
+        backup_path = self.pre_migration_backup_path
         source = sqlite3.connect(self.path)
         target = sqlite3.connect(backup_path)
         try:

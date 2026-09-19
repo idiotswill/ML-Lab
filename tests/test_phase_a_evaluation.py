@@ -5,7 +5,10 @@ from pathlib import Path
 import pytest
 
 from ml_lab.adapters.phase_a import PHASE_A_CONTRACT_VERSION
-from ml_lab.adapters.phase_a_reference import ReferenceValidationReceipt
+from ml_lab.adapters.phase_a_reference import (
+    ReferencePreflightReceipt,
+    ReferenceValidationReceipt,
+)
 from ml_lab.core.models import DatasetSplit, FailureSeverity
 from ml_lab.datasets.service import DatasetService, ValidatedExampleInput
 from ml_lab.evaluation.phase_a import make_phase_a_case_evaluator
@@ -78,6 +81,27 @@ def _receipt(
         error_code=error_code,
         error_message=None,
         receipt_artifact_digest="d" * 64,
+    )
+
+
+def _preflight(
+    *,
+    status: str = "MODEL_ALLOWED",
+    model_call_allowed: bool = True,
+    error_code: str | None = None,
+) -> ReferencePreflightReceipt:
+    return ReferencePreflightReceipt(
+        status=status,
+        commit_sha="a" * 40,
+        contract_version=PHASE_A_CONTRACT_VERSION,
+        request_sha256="b" * 64,
+        validator="frankenhomie.run_residual_semantics.preflight",
+        fresh_process=True,
+        model_call_allowed=model_call_allowed,
+        authority_mutation_allowed=False,
+        error_code=error_code,
+        error_message=None,
+        receipt_artifact_digest="e" * 64,
     )
 
 
@@ -173,6 +197,92 @@ def test_reference_rejection_is_veto_but_reference_error_aborts_evaluation() -> 
     )
     with pytest.raises(RuntimeError, match="reference validator infrastructure failed"):
         broken(_row(request, expected))
+
+
+def test_non_residual_input_never_reaches_predictor() -> None:
+    request = _request(
+        "I strike Mara",
+        "HARM_TARGET",
+        "TARGET_COMBATANT",
+        ["combatant:mara"],
+    )
+    assessment = dict(request["assessment"])
+    assessment["route"] = "NO_ACTION"
+    request["assessment"] = assessment
+    called = False
+
+    def predict(_request: Mapping[str, object]) -> Mapping[str, object]:
+        nonlocal called
+        called = True
+        return _resolve("HARM_TARGET", "TARGET_COMBATANT", "combatant:mara")
+
+    evaluator = make_phase_a_case_evaluator(
+        predictor=predict,
+        reference_check=lambda _request, _proposal: _receipt(),
+    )
+    with pytest.raises(ValueError, match="SEMANTIC_REQUIRED"):
+        evaluator(_row(request, _resolve("HARM_TARGET", "TARGET_COMBATANT", "combatant:mara")))
+    assert called is False
+
+
+def test_pinned_preflight_block_never_reaches_predictor() -> None:
+    request = _request(
+        "I strike Mara",
+        "HARM_TARGET",
+        "TARGET_COMBATANT",
+        ["combatant:mara"],
+    )
+    called = False
+
+    def predict(_request: Mapping[str, object]) -> Mapping[str, object]:
+        nonlocal called
+        called = True
+        return _resolve("HARM_TARGET", "TARGET_COMBATANT", "combatant:mara")
+
+    evaluator = make_phase_a_case_evaluator(
+        predictor=predict,
+        reference_check=lambda _request, _proposal: _receipt(),
+        reference_preflight=lambda _request: _preflight(
+            status="MODEL_BLOCKED",
+            model_call_allowed=False,
+            error_code="DETERMINISTIC_VETO",
+        ),
+    )
+    with pytest.raises(RuntimeError, match="preflight blocked"):
+        evaluator(_row(request, _resolve("HARM_TARGET", "TARGET_COMBATANT", "combatant:mara")))
+    assert called is False
+
+
+def test_unsupported_authority_is_vetoed_before_reference_validator() -> None:
+    request = _request(
+        "I strike Mara",
+        "HARM_TARGET",
+        "TARGET_COMBATANT",
+        ["combatant:mara"],
+    )
+    proposal = _resolve("HARM_TARGET", "TARGET_COMBATANT", "combatant:mara")
+    proposal["damage_roll"] = "1d8+3"
+    reference_called = False
+
+    def reference_check(
+        _request: Mapping[str, object],
+        _proposal: Mapping[str, object],
+    ) -> ReferenceValidationReceipt:
+        nonlocal reference_called
+        reference_called = True
+        return _receipt()
+
+    outcome = make_phase_a_case_evaluator(
+        predictor=lambda _request: proposal,
+        reference_check=reference_check,
+        reference_preflight=lambda _request: _preflight(),
+    )(_row(request, _resolve("HARM_TARGET", "TARGET_COMBATANT", "combatant:mara")))
+
+    assert reference_called is False
+    assert outcome.failure_kind == "UNSUPPORTED_MECHANICS_AUTHORITY"
+    assert outcome.failure_severity is FailureSeverity.VETO
+    assert isinstance(outcome.observed, Mapping)
+    assert outcome.observed["preflight"]["status"] == "MODEL_ALLOWED"
 
 
 def test_phase_a_evidence_persists_through_generic_evaluation_service(tmp_path: Path) -> None:

@@ -115,6 +115,11 @@ def run_phase_a_baseline(
             request=request,
             proposal=proposal,
         ),
+        reference_preflight=lambda request: reference.preflight(
+            repository=repository,
+            ref=snapshot.commit_sha,
+            request=request,
+        ),
     )
     return baseline.run(
         experiment.id,

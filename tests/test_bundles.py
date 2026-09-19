@@ -55,7 +55,13 @@ def _release_candidate(tmp_path: Path) -> tuple[Workspace, str]:
         runtime_pack_id="builtin-sparse",
         config={"alpha": 0.2},
         seed=17,
-        environment={"runtime": "test"},
+        environment={
+            "runtime": "test",
+            "reproducibility": {
+                "mode": "DETERMINISTIC",
+                "metric_tolerances": {},
+            },
+        },
     )
     experiments.start(experiment.id)
     model_artifact = workspace.artifacts.commit_bytes(
@@ -108,6 +114,16 @@ def test_bundle_is_deterministic_split_safe_and_fresh_verifiable(tmp_path: Path)
     with zipfile.ZipFile(bundle_path, "r") as archive:
         reproduction = json.loads(archive.read("reproduction.json"))
         assert set(reproduction["input_partitions"]) == {"TRAIN", "DEV"}
+        assert reproduction["reproducibility"] == {
+            "mode": "DETERMINISTIC",
+            "metric_tolerances": {},
+        }
+        datasets = json.loads(archive.read("datasets.json"))
+        assert set(datasets["partitions"]) == {"TRAIN", "DEV", "TEST", "REDTEAM"}
+        assert all(
+            len(partition["sha256"]) == 64
+            for partition in datasets["partitions"].values()
+        )
         known_failures = json.loads(archive.read("known_failures.json"))
         assert len(known_failures) == 1
         assert known_failures[0]["kind"] == "KNOWN_NON_VETO"
@@ -180,6 +196,51 @@ def test_bundle_semantically_rejects_protected_trainer_partition(tmp_path: Path)
     result = verify_bundle_file(malicious)
     assert result["status"] == "FAIL"
     assert "protected partition" in str(result["error"])
+
+
+def test_bundle_rehash_cannot_remove_reproducibility_declaration(
+    tmp_path: Path,
+) -> None:
+    workspace, model_id = _release_candidate(tmp_path)
+    bundle = BundleService(workspace).build_release_candidate(model_id)
+    source = workspace.artifacts.resolve(bundle.bundle_artifact_digest)
+    malicious = tmp_path / "missing-reproducibility.zip"
+    members = _read_members(source)
+    reproduction = json.loads(members["reproduction.json"])
+    reproduction.pop("reproducibility")
+    members["reproduction.json"] = (
+        json.dumps(reproduction, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+    members["hashes.sha256"] = _hash_manifest(members)
+    _write_members(malicious, members)
+
+    result = verify_bundle_file(malicious)
+    assert result["status"] == "FAIL"
+    assert "reproducibility declaration" in str(result["error"])
+
+
+def test_bundle_rehash_rejects_nondeterminism_without_tolerances(
+    tmp_path: Path,
+) -> None:
+    workspace, model_id = _release_candidate(tmp_path)
+    bundle = BundleService(workspace).build_release_candidate(model_id)
+    source = workspace.artifacts.resolve(bundle.bundle_artifact_digest)
+    malicious = tmp_path / "nondeterministic-without-tolerances.zip"
+    members = _read_members(source)
+    reproduction = json.loads(members["reproduction.json"])
+    reproduction["reproducibility"] = {
+        "mode": "NONDETERMINISTIC",
+        "metric_tolerances": {},
+    }
+    members["reproduction.json"] = (
+        json.dumps(reproduction, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+    members["hashes.sha256"] = _hash_manifest(members)
+    _write_members(malicious, members)
+
+    result = verify_bundle_file(malicious)
+    assert result["status"] == "FAIL"
+    assert "explicit metric tolerances" in str(result["error"])
 
 
 @pytest.mark.scale

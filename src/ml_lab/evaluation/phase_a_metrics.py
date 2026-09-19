@@ -45,6 +45,7 @@ _LABELS = {
     "contract_failures": "Contract failures",
     "zero_model_route_violations": "Zero-model route violations",
     "hidden_or_out_of_envelope": "Hidden / envelope escapes",
+    "unsupported_mechanics_authority": "Unsupported mechanics authority",
     "adversarial_failures": "Adversarial failures",
     "latency_ms": "Latency",
     "ram_mb": "RAM",
@@ -89,6 +90,9 @@ def summarize_phase_a_experiment(
     false_commitments = 0
     contract_failures = 0
     envelope_failures = 0
+    unsupported_authority = 0
+    preflight_measured = total > 0
+    zero_model_route_violations = 0
     incorrect = 0
     latency_total = 0.0
 
@@ -124,6 +128,16 @@ def summarize_phase_a_experiment(
         false_commitments += int(failure_kind == "FALSE_COMMITMENT")
         contract_failures += int(failure_kind == "CONTRACT_FAILURE")
         envelope_failures += int(failure_kind == "HIDDEN_OR_OUT_OF_ENVELOPE")
+        unsupported_authority += int(
+            failure_kind == "UNSUPPORTED_MECHANICS_AUTHORITY"
+        )
+        preflight = observed.get("preflight")
+        if not isinstance(preflight, dict):
+            preflight_measured = False
+        else:
+            zero_model_route_violations += int(
+                preflight.get("status") != "MODEL_ALLOWED"
+            )
         incorrect += int(not is_correct)
         latency_total += float(row["latency_ms"])
 
@@ -192,13 +206,29 @@ def summarize_phase_a_experiment(
             ),
         ),
         "zero_model_route_violations": (
-            None,
-            "Not measured inside the residual-only Lab dataset",
+            (
+                float(zero_model_route_violations)
+                if has_evidence and preflight_measured
+                else None
+            ),
+            (
+                "Pinned Frankenhomie preflight ran before every evaluated model call"
+                if has_evidence and preflight_measured
+                else "Not measured without pinned preflight evidence"
+            ),
         ),
         "hidden_or_out_of_envelope": (
             float(envelope_failures) if has_evidence else None,
             (
                 "Veto: hidden/fact/family/slot envelope escape"
+                if has_evidence
+                else no_evidence_note
+            ),
+        ),
+        "unsupported_mechanics_authority": (
+            float(unsupported_authority) if has_evidence else None,
+            (
+                "Veto: proposal attempted fields outside the residual semantic contract"
                 if has_evidence
                 else no_evidence_note
             ),
@@ -328,6 +358,10 @@ def load_pinned_provider_reference(
         "hidden_or_out_of_envelope": (
             _sum_optional(candidate_escapes, fact_escapes),
             "Historical candidate + fact envelope violations; veto",
+        ),
+        "unsupported_mechanics_authority": (
+            None,
+            "Historical A5 result does not expose this veto metric separately",
         ),
         "adversarial_failures": (
             None,

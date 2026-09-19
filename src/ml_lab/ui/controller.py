@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -166,6 +167,11 @@ class AppController(QObject):
                 "correlationId": item.correlation_id or "",
                 "error": item.error or "",
                 "resultDigest": item.result_artifact_digest or "",
+                "elapsed": _elapsed_text(
+                    item.created_at,
+                    item.updated_at,
+                    item.status.value,
+                ),
             }
             for item in self._services.jobs.list_recent(25)
         ]
@@ -281,6 +287,18 @@ class AppController(QObject):
             self.jobsChanged.emit()
         except Exception as exc:
             self.errorRaised.emit("Cancellation error", str(exc))
+
+    @Slot(str)
+    def openJobLogs(self, job_id: str) -> None:
+        if not self._services:
+            return
+        try:
+            record = self._services.jobs.get(job_id)
+            record.staging_dir.mkdir(parents=True, exist_ok=True)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(record.staging_dir)))
+        except Exception as exc:
+            LOGGER.exception("Unable to open job evidence folder")
+            self.errorRaised.emit("Job logs error", str(exc))
 
     @Slot(str)
     def setThemeMode(self, mode: str) -> None:
@@ -488,3 +506,27 @@ def _human_bytes(value: int | float | None) -> str:
             return f"{amount:.1f} {unit}"
         amount /= 1024
     return f"{amount:.1f} TB"
+
+
+
+def _elapsed_text(created_at: str, updated_at: str, status: str) -> str:
+    try:
+        started = datetime.fromisoformat(created_at)
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=UTC)
+        if status in {"QUEUED", "RUNNING", "CANCELLING"}:
+            ended = datetime.now(UTC)
+        else:
+            ended = datetime.fromisoformat(updated_at)
+            if ended.tzinfo is None:
+                ended = ended.replace(tzinfo=UTC)
+        seconds = max(0, int((ended - started).total_seconds()))
+    except ValueError:
+        return "—"
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours:d}h {minutes:02d}m {seconds:02d}s"
+    if minutes:
+        return f"{minutes:d}m {seconds:02d}s"
+    return f"{seconds:d}s"

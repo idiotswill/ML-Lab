@@ -25,6 +25,21 @@ PHASE_A_FAMILIES = frozenset(
     }
 )
 
+_PHASE_A_PROPOSAL_FIELDS = frozenset(
+    {
+        "version",
+        "decision",
+        "action_family",
+        "entity_keys",
+        "slots",
+        "reason_code",
+        "facts_used",
+        "question",
+        "missing_slots",
+        "candidate_keys",
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class MetricDefinition:
@@ -108,6 +123,7 @@ class PhaseAResidualAdapter:
             MetricDefinition("contract_failures", MetricDirection.ZERO, True),
             MetricDefinition("zero_model_route_violations", MetricDirection.ZERO, True),
             MetricDefinition("hidden_or_out_of_envelope", MetricDirection.ZERO, True),
+            MetricDefinition("unsupported_mechanics_authority", MetricDirection.ZERO, True),
             MetricDefinition("adversarial_failures", MetricDirection.ZERO, True),
             MetricDefinition("latency_ms", MetricDirection.LOWER, False),
             MetricDefinition("ram_mb", MetricDirection.LOWER, False),
@@ -208,6 +224,8 @@ class PhaseAResidualAdapter:
             self.validate_exported_request(request)
         except ValueError:
             return ProposalValidation(False, "INVALID_EXPORTED_REQUEST")
+        if set(proposal) - _PHASE_A_PROPOSAL_FIELDS:
+            return ProposalValidation(False, "UNSUPPORTED_AUTHORITY_FIELD")
         if proposal.get("version") != PHASE_A_CONTRACT_VERSION:
             return ProposalValidation(False, "SLOT_CONTRACT_REQUIRED")
         if proposal.get("entity_keys") not in (None, [], ()):

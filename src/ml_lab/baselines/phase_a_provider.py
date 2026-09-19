@@ -14,6 +14,7 @@ from ml_lab.adapters.phase_a_provider import (
 )
 from ml_lab.adapters.phase_a_reference import (
     PhaseAReferenceValidator,
+    ReferencePreflightReceipt,
     ReferenceValidationReceipt,
 )
 from ml_lab.baselines.service import BaselineRunResult, BaselineService
@@ -113,6 +114,17 @@ def run_phase_a_local_provider_baseline(
             "reference_repository_identity": snapshot.repo_identity,
             "provider_source": "PINNED_COMMITTED_BYTES",
             "integration_gate": "NO_GO",
+            "reproducibility": {
+                "mode": "NONDETERMINISTIC",
+                "comparison_policy": "VETO_EXACT_NON_VETO_REPORT_ONLY",
+                "metric_tolerances": {
+                    "contract_failures": 0.0,
+                    "false_commitments": 0.0,
+                    "hidden_or_out_of_envelope": 0.0,
+                    "unsupported_mechanics_authority": 0.0,
+                    "zero_model_route_violations": 0.0,
+                },
+            },
         },
     )
     runner = PhaseALocalProviderRunner(
@@ -131,6 +143,11 @@ def run_phase_a_local_provider_baseline(
             ref=snapshot.commit_sha,
             request=request,
             proposal=proposal,
+        ),
+        reference_preflight=lambda request: reference.preflight(
+            repository=Path(snapshot.repo_path),
+            ref=snapshot.commit_sha,
+            request=request,
         ),
     )
     return baseline.run(
@@ -175,6 +192,10 @@ def _provider_evaluator(
         [Mapping[str, object], Mapping[str, object]],
         ReferenceValidationReceipt,
     ],
+    reference_preflight: Callable[
+        [Mapping[str, object]],
+        ReferencePreflightReceipt,
+    ],
 ) -> CaseEvaluator:
     last_provider: dict[str, object] = {}
 
@@ -195,6 +216,7 @@ def _provider_evaluator(
     base = make_phase_a_case_evaluator(
         predictor=predict,
         reference_check=reference_check,
+        reference_preflight=reference_preflight,
     )
 
     def evaluate(row: Mapping[str, object]) -> CaseOutcome:

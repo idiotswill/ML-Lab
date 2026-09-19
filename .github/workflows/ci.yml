@@ -8,6 +8,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+  PHASE4_CANDIDATE_VERSION: "0.1.0-testing.1"
+  PHASE4_RELEASE_LABEL: "v0.1.0-testing.1"
+
 jobs:
   core:
     strategy:
@@ -16,6 +21,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
       - name: Install Qt runtime libraries on Linux
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -52,6 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
       - name: Install Qt runtime libraries on Linux
         run: |
           sudo apt-get update
@@ -69,6 +78,8 @@ jobs:
     needs: [core, scale]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.12.15"
@@ -95,10 +106,108 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Compiled QML smoke failed" }
           & $exe.FullName --performance-probe
           if ($LASTEXITCODE -ne 0) { throw "Compiled performance probe failed" }
-      - name: Retain smoke-tested standalone for physical sign-off
+          $env:QT_QPA_PLATFORM = "windows"
+          $performanceSmoke = Join-Path $PWD "deployment\release\performance-smoke.json"
+          & $exe.FullName --release-performance-evidence $performanceSmoke --performance-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Compiled release performance evidence smoke failed" }
+          if (-not (Test-Path $performanceSmoke)) {
+              throw "Compiled release performance evidence receipt was not written"
+          }
+      - name: Build testing candidate installer
+        shell: pwsh
+        run: ./scripts/build_windows_installer.ps1 -AppVersion "$env:PHASE4_CANDIDATE_VERSION"
+      - name: Smoke install and uninstall
+        shell: pwsh
+        run: |
+          $installer = Join-Path $PWD "deployment\release\MLLab-Setup-v$env:PHASE4_CANDIDATE_VERSION-x64.exe"
+          if (-not (Test-Path $installer)) { throw "Installer was not produced: $installer" }
+
+          $installDir = Join-Path $env:RUNNER_TEMP "ML Lab Ünicode Install"
+          $workspace = Join-Path $env:RUNNER_TEMP "ML Lab Ünicode Workspace"
+          New-Item -ItemType Directory -Force $workspace | Out-Null
+          $sentinel = Join-Path $workspace "preserve-me.txt"
+          Set-Content -Path $sentinel -Value "workspace must survive uninstall"
+
+          $setupLog = Join-Path $env:RUNNER_TEMP "ML Lab Ünicode Setup.log"
+          $setupArgs = "/DIR=`"$installDir`" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=`"$setupLog`""
+          $setup = Start-Process -FilePath $installer -ArgumentList $setupArgs -Wait -PassThru
+          if ($setup.ExitCode -ne 0) {
+              if (Test-Path $setupLog) { Get-Content $setupLog }
+              throw "Silent installer failed with exit code $($setup.ExitCode)"
+          }
+
+          $installedExe = Join-Path $installDir "MLLab.exe"
+          if (-not (Test-Path $installedExe)) {
+              if (Test-Path $setupLog) { Get-Content $setupLog }
+              throw "Installed MLLab.exe is missing from requested Unicode/space path"
+          }
+
+          $originalPath = $env:PATH
+          try {
+              $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+              & $installedExe --smoke-test
+              if ($LASTEXITCODE -ne 0) { throw "Installed storage smoke failed" }
+              & $installedExe --job-smoke-test
+              if ($LASTEXITCODE -ne 0) { throw "Installed worker smoke failed" }
+              & $installedExe --release-smoke-prepare $workspace
+              if ($LASTEXITCODE -ne 0) { throw "Installed clean-machine prepare smoke failed" }
+              & $installedExe --release-smoke-reopen $workspace
+              if ($LASTEXITCODE -ne 0) { throw "Installed clean-machine reopen smoke failed" }
+
+              $uxEvidence = Join-Path $PWD "deployment\release\ux-evidence"
+              New-Item -ItemType Directory -Force $uxEvidence | Out-Null
+              foreach ($theme in @("light", "dark")) {
+                  foreach ($scale in @("1", "1.25", "1.5", "2")) {
+                      $env:QT_QPA_PLATFORM = "windows"
+                      $env:QSG_RHI_BACKEND = "software"
+                      $env:QT_SCALE_FACTOR = $scale
+                      & $installedExe --release-visual-smoke $uxEvidence --visual-theme $theme
+                      if ($LASTEXITCODE -ne 0) {
+                          throw "Installed visual smoke failed for theme=$theme scale=$scale"
+                      }
+                  }
+              }
+              Remove-Item Env:QT_SCALE_FACTOR -ErrorAction SilentlyContinue
+          }
+          finally {
+              $env:PATH = $originalPath
+          }
+
+          $uninstaller = Join-Path $installDir "unins000.exe"
+          if (-not (Test-Path $uninstaller)) { throw "Uninstaller is missing" }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) {
+              throw "Silent uninstall failed with exit code $($uninstall.ExitCode)"
+          }
+          for ($attempt = 0; $attempt -lt 50 -and (Test-Path $installedExe); $attempt++) {
+              Start-Sleep -Milliseconds 200
+          }
+          if (Test-Path $installedExe) { throw "Uninstall left application executable behind" }
+          if (-not (Test-Path $sentinel)) { throw "Uninstall removed external workspace data" }
+      - name: Add candidate handoff material
+        shell: pwsh
+        run: |
+          Copy-Item scripts/run_phase4_performance.cmd deployment/release/Run-Representative-Performance.cmd
+          Copy-Item docs/TESTING_READY_HANDOFF.md deployment/release/TESTING_READY_HANDOFF.md
+          Copy-Item docs/TESTING_READY_RELEASE_NOTES.md deployment/release/TESTING_READY_RELEASE_NOTES.md
+          Copy-Item docs/PHASE4_EXIT_AUDIT.md deployment/release/PHASE4_EXIT_AUDIT.md
+      - name: Package testing candidate + provenance
+        shell: pwsh
+        run: >
+          uv run python -m ml_lab.release.windows
+          --dist deployment/main.dist
+          --output deployment/release
+          --source-commit "$env:SOURCE_COMMIT"
+          --lock uv.lock
+          --release-label "$env:PHASE4_RELEASE_LABEL"
+          --application-version "$env:PHASE4_CANDIDATE_VERSION"
+          --testing-candidate
+          --installer-recipe packaging/windows/MLLab.iss
+          --installer "deployment/release/MLLab-Setup-v$env:PHASE4_CANDIDATE_VERSION-x64.exe"
+      - name: Retain Phase 4 testing candidate evidence
         uses: actions/upload-artifact@v4
         with:
-          name: MLLab-phase2-windows-standalone-${{ github.sha }}
-          path: deployment/main.dist
+          name: MLLab-phase4-testing-candidate-${{ env.SOURCE_COMMIT }}
+          path: deployment/release
           if-no-files-found: error
           retention-days: 14

@@ -11,6 +11,63 @@ Item {
     }
 
     Dialog {
+        id: archiveDialog
+        modal: true
+        anchors.centerIn: parent
+        width: 480
+        title: "Archive project?"
+        standardButtons: Dialog.NoButton
+        property string projectId: ""
+        property string projectName: ""
+
+        background: Rectangle {
+            color: Theme.surface
+            radius: 12
+            border.color: Theme.warnBorder
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+
+            Text {
+                Layout.fillWidth: true
+                text: "Archive “" + archiveDialog.projectName + "”?"
+                color: Theme.text
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "Scope: this hides the project from the active project list. Immutable datasets, experiments, failures, models, bundles, hashes and receipts are preserved and are not deleted."
+                color: Theme.muted
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+
+                LabButton {
+                    text: "Keep project"
+                    onClicked: archiveDialog.close()
+                }
+
+                LabButton {
+                    text: "Archive project"
+                    primary: true
+                    onClicked: {
+                        appController.archiveProject(archiveDialog.projectId)
+                        archiveDialog.close()
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
         id: createDialog
         modal: true
         anchors.centerIn: parent
@@ -37,6 +94,8 @@ Item {
                 id: projectName
                 Layout.fillWidth: true
                 placeholderText: "Phase A Semantic Intake"
+                activeFocusOnTab: true
+                Accessible.name: "Project name"
             }
 
             Text {
@@ -49,6 +108,8 @@ Item {
                 Layout.fillWidth: true
                 model: appController.adapters
                 textRole: "name"
+                activeFocusOnTab: true
+                Accessible.name: "Project adapter"
             }
 
             Text {
@@ -61,6 +122,8 @@ Item {
                 Layout.fillWidth: true
                 implicitHeight: 90
                 wrapMode: TextArea.Wrap
+                activeFocusOnTab: true
+                Accessible.name: "Project description"
             }
 
             RowLayout {
@@ -202,13 +265,39 @@ Item {
 
                     footer: Item {
                         width: list.width
-                        height: appController.projects.length === 0 ? 180 : 0
+                        height: appController.projects.length === 0 ? 250 : 0
 
-                        Text {
+                        ColumnLayout {
                             anchors.centerIn: parent
                             visible: appController.projects.length === 0
-                            text: "No projects yet. Create one without committing to an ML stack."
-                            color: Theme.dim
+                            width: Math.min(parent.width - 40, 520)
+                            spacing: 8
+
+                            Text {
+                                Layout.alignment: Qt.AlignHCenter
+                                text: "Your first Lab project starts here"
+                                color: Theme.text
+                                font.pixelSize: 18
+                                font.weight: Font.DemiBold
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: "1. Create a bounded project and choose its adapter.\n2. Freeze or import data in Data Studio (Ctrl+2).\n3. Launch an experiment (Ctrl+3), compare results (Ctrl+4), preserve failures (Ctrl+5), then package only a RELEASE_CANDIDATE (Ctrl+7)."
+                                color: Theme.muted
+                                font.pixelSize: 12
+                                wrapMode: Text.WordWrap
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Nothing here installs into Frankenhomie. Integration remains NO-GO."
+                                color: Theme.warnText
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                                horizontalAlignment: Text.AlignHCenter
+                            }
                         }
                     }
                 }
@@ -327,7 +416,11 @@ Item {
                     LabButton {
                         text: "Archive project"
                         Layout.fillWidth: true
-                        onClicked: appController.archiveProject(appController.selectedProject.id)
+                        onClicked: {
+                            archiveDialog.projectId = String(appController.selectedProject.id)
+                            archiveDialog.projectName = String(appController.selectedProject.name)
+                            archiveDialog.open()
+                        }
                     }
                 }
             }

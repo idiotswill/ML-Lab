@@ -63,7 +63,7 @@ Item {
 
             Panel {
                 SplitView.preferredWidth: 280
-                SplitView.minimumWidth: 220
+                SplitView.minimumWidth: 160
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -150,7 +150,7 @@ Item {
 
             Panel {
                 SplitView.preferredWidth: 310
-                SplitView.minimumWidth: 230
+                SplitView.minimumWidth: 170
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -248,10 +248,13 @@ Item {
 
                         Text {
                             anchors.centerIn: parent
+                            width: Math.max(1, parent.width - 24)
                             visible: modelList.count === 0
                             text: "No registered models on this page."
                             color: Theme.dim
                             font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
                         }
                     }
 
@@ -283,14 +286,16 @@ Item {
 
             Panel {
                 SplitView.fillWidth: true
-                SplitView.minimumWidth: 390
+                SplitView.minimumWidth: 220
 
                 ScrollView {
+                    id: registryDetailsScroll
                     anchors.fill: parent
                     clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                     ColumnLayout {
-                        width: Math.max(parent.width - 20, 360)
+                        width: Math.max(registryDetailsScroll.availableWidth - 20, 1)
                         spacing: 10
 
                         Text {

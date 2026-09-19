@@ -211,6 +211,8 @@ def _validate_manifest_consistency(
     if not all(isinstance(item, dict) for item in known_failures):
         raise ValueError("known_failures.json entries must be JSON objects.")
 
+    _validate_reproducibility(reproduction)
+
     input_partitions = reproduction.get("input_partitions")
     if not isinstance(input_partitions, dict):
         raise ValueError("Reproduction spec input_partitions must be an object.")
@@ -239,6 +241,33 @@ def _validate_manifest_consistency(
             partition.get("sha256"),
             digest,
             f"Reproduction {split} partition hash",
+        )
+
+
+def _validate_reproducibility(reproduction: dict[str, object]) -> None:
+    raw = reproduction.get("reproducibility")
+    if not isinstance(raw, dict):
+        raise ValueError("Reproduction spec is missing reproducibility declaration.")
+    mode = raw.get("mode")
+    if mode not in {"DETERMINISTIC", "NONDETERMINISTIC"}:
+        raise ValueError("Reproduction spec has an invalid reproducibility mode.")
+    tolerances = raw.get("metric_tolerances")
+    if not isinstance(tolerances, dict):
+        raise ValueError("Reproduction metric_tolerances must be an object.")
+    for metric, tolerance in tolerances.items():
+        if not isinstance(metric, str) or not metric:
+            raise ValueError("Reproduction tolerance metric id must be non-empty.")
+        if (
+            isinstance(tolerance, bool)
+            or not isinstance(tolerance, (int, float))
+            or float(tolerance) < 0
+        ):
+            raise ValueError(
+                f"Reproduction tolerance for {metric!r} must be a non-negative number."
+            )
+    if mode == "NONDETERMINISTIC" and not tolerances:
+        raise ValueError(
+            "Nondeterministic reproduction requires explicit metric tolerances."
         )
 
 

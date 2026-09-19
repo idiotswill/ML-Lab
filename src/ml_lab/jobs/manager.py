@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -15,6 +16,8 @@ from ml_lab.core.process import worker_command
 from ml_lab.jobs.protocol import JobSpec
 from ml_lab.storage.artifacts import ArtifactStore
 from ml_lab.storage.database import Database
+
+LOGGER = logging.getLogger(__name__)
 
 
 class JobManager:
@@ -290,6 +293,14 @@ class JobManager:
                 stderr.strip() if stderr else f"Worker exited with code {code}"
             )
 
+        if final is JobStatus.FAILED:
+            LOGGER.error(
+                "Job failed correlation_id=%s job_id=%s task_type=%s error=%s",
+                current.correlation_id or "missing",
+                job_id,
+                current.task_type,
+                error or "unknown",
+            )
         self._update(
             job_id,
             status=final,

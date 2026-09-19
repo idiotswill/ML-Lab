@@ -113,6 +113,17 @@ def run_phase_a_local_provider_baseline(
             "reference_repository_identity": snapshot.repo_identity,
             "provider_source": "PINNED_COMMITTED_BYTES",
             "integration_gate": "NO_GO",
+            "reproducibility": {
+                "mode": "NONDETERMINISTIC",
+                "comparison_policy": "VETO_EXACT_NON_VETO_REPORT_ONLY",
+                "metric_tolerances": {
+                    "contract_failures": 0.0,
+                    "false_commitments": 0.0,
+                    "hidden_or_out_of_envelope": 0.0,
+                    "unsupported_mechanics_authority": 0.0,
+                    "zero_model_route_violations": 0.0,
+                },
+            },
         },
     )
     runner = PhaseALocalProviderRunner(

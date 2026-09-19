@@ -309,10 +309,13 @@ Item {
                         }
 
                         Text {
+                            Layout.fillWidth: true
                             Layout.alignment: Qt.AlignHCenter
                             text: "Examples are paged from SQLite; large datasets are never materialized into QML at once."
                             color: Theme.muted
                             font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
                         }
 
                         Item { Layout.fillHeight: true }

@@ -3,7 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 
 from ml_lab.adapters.phase_a import PhaseAResidualAdapter
-from ml_lab.adapters.phase_a_reference import ReferenceValidationReceipt
+from ml_lab.adapters.phase_a_reference import (
+    ReferencePreflightReceipt,
+    ReferenceValidationReceipt,
+)
 from ml_lab.core.models import FailureSeverity
 from ml_lab.evaluation.service import CaseEvaluator, CaseOutcome
 from ml_lab.trainers.phase_a_sparse import (
@@ -16,6 +19,10 @@ PhaseAPredictor = Callable[[Mapping[str, object]], Mapping[str, object]]
 PhaseAReferenceCheck = Callable[
     [Mapping[str, object], Mapping[str, object]],
     ReferenceValidationReceipt,
+]
+PhaseAReferencePreflight = Callable[
+    [Mapping[str, object]],
+    ReferencePreflightReceipt,
 ]
 
 _ENVELOPE_ERRORS = frozenset(
@@ -35,6 +42,7 @@ def make_phase_a_case_evaluator(
     *,
     predictor: PhaseAPredictor,
     reference_check: PhaseAReferenceCheck,
+    reference_preflight: PhaseAReferencePreflight | None = None,
 ) -> CaseEvaluator:
     """Build an evaluator that keeps Frankenhomie reference validation authoritative."""
 
@@ -44,6 +52,23 @@ def make_phase_a_case_evaluator(
         payload = _required_mapping(row.get("payload"), "payload")
         request = _required_mapping(payload.get("request"), "payload.request")
         expected = _required_mapping(row.get("label"), "label")
+
+        # Fail before any model/provider call if a row escaped the residual-only seam.
+        adapter.validate_exported_request(request)
+        preflight_summary: dict[str, object] | None = None
+        if reference_preflight is not None:
+            preflight = reference_preflight(request)
+            if preflight.status == "ERROR":
+                raise RuntimeError(
+                    "Phase A reference preflight infrastructure failed: "
+                    f"{preflight.error_code or 'UNKNOWN'}"
+                )
+            if preflight.status != "MODEL_ALLOWED" or not preflight.model_call_allowed:
+                raise RuntimeError(
+                    "Pinned Frankenhomie preflight blocked the model call: "
+                    f"{preflight.error_code or preflight.status}"
+                )
+            preflight_summary = _preflight_summary(preflight)
 
         try:
             proposal = dict(predictor(request))
@@ -68,6 +93,7 @@ def make_phase_a_case_evaluator(
                 error_code=error_code,
                 validator="ml-lab.phase-a-adapter-precheck",
                 receipt_digest=None,
+                preflight=preflight_summary,
             )
 
         receipt = reference_check(request, proposal)
@@ -83,6 +109,7 @@ def make_phase_a_case_evaluator(
                 validator=receipt.validator,
                 receipt_digest=receipt.receipt_artifact_digest,
                 reference=receipt,
+                preflight=preflight_summary,
             )
         if receipt.status != "ACCEPTED":
             raise RuntimeError(f"Unknown Phase A reference status {receipt.status!r}")
@@ -91,6 +118,8 @@ def make_phase_a_case_evaluator(
             "proposal": proposal,
             "reference": _reference_summary(receipt),
         }
+        if preflight_summary is not None:
+            observed["preflight"] = preflight_summary
         correct = _semantically_equivalent(expected, proposal)
         if correct:
             return CaseOutcome(
@@ -120,10 +149,12 @@ def make_phase_a_sparse_evaluator(
     model: PhaseASparseModel,
     *,
     reference_check: PhaseAReferenceCheck,
+    reference_preflight: PhaseAReferencePreflight | None = None,
 ) -> CaseEvaluator:
     return make_phase_a_case_evaluator(
         predictor=lambda request: predict_phase_a_sparse(model, request),
         reference_check=reference_check,
+        reference_preflight=reference_preflight,
     )
 
 
@@ -134,10 +165,13 @@ def _rejected_outcome(
     validator: str,
     receipt_digest: str | None,
     reference: ReferenceValidationReceipt | None = None,
+    preflight: Mapping[str, object] | None = None,
 ) -> CaseOutcome:
     failure_kind = (
         "HIDDEN_OR_OUT_OF_ENVELOPE"
         if error_code in _ENVELOPE_ERRORS
+        else "UNSUPPORTED_MECHANICS_AUTHORITY"
+        if error_code == "UNSUPPORTED_AUTHORITY_FIELD"
         else "FALSE_COMMITMENT"
         if error_code == "DETERMINISTIC_VETO"
         else "CONTRACT_FAILURE"
@@ -150,11 +184,14 @@ def _rejected_outcome(
     }
     if reference is not None:
         reference_summary = _reference_summary(reference)
+    observed: dict[str, object] = {
+        "proposal": dict(proposal),
+        "reference": reference_summary,
+    }
+    if preflight is not None:
+        observed["preflight"] = dict(preflight)
     return CaseOutcome(
-        observed={
-            "proposal": dict(proposal),
-            "reference": reference_summary,
-        },
+        observed=observed,
         correct=False,
         latency_ms=-1.0,
         failure_kind=failure_kind,
@@ -208,6 +245,20 @@ def _comparison_evidence(
             expected_decision == "ASK_PLAYER" and observed_decision == "ASK_PLAYER"
         ),
         "false_commitment": observed_decision == "RESOLVE",
+    }
+
+
+def _preflight_summary(receipt: ReferencePreflightReceipt) -> dict[str, object]:
+    return {
+        "status": receipt.status,
+        "commit_sha": receipt.commit_sha,
+        "contract_version": receipt.contract_version,
+        "validator": receipt.validator,
+        "fresh_process": receipt.fresh_process,
+        "model_call_allowed": receipt.model_call_allowed,
+        "authority_mutation_allowed": receipt.authority_mutation_allowed,
+        "error_code": receipt.error_code,
+        "receipt_artifact_digest": receipt.receipt_artifact_digest,
     }
 
 

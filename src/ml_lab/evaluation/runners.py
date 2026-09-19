@@ -125,6 +125,11 @@ def evaluate_phase_a_sparse_experiment(
             request=request,
             proposal=proposal,
         ),
+        reference_preflight=lambda request: reference.preflight(
+            repository=repository,
+            ref=snapshot.commit_sha,
+            request=request,
+        ),
     )
     return _evaluate_protected_partitions(
         workspace,

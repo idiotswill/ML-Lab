@@ -1,3 +1,7 @@
+param(
+    [string]$AppVersion = ""
+)
+
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
@@ -6,7 +10,10 @@ if (-not (Test-Path $standaloneExe)) {
     throw "Standalone build must exist before building the installer: $standaloneExe"
 }
 
-$version = (uv run python -c "from ml_lab import __version__; print(__version__)").Trim()
+$version = $AppVersion.Trim()
+if (-not $version) {
+    $version = (uv run python -c "from ml_lab import __version__; print(__version__)").Trim()
+}
 if (-not $version) {
     throw "Could not resolve ML Lab version"
 }
@@ -35,9 +42,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup compiler failed with exit code $LASTEXITCODE"
 }
 
-$installer = Join-Path $PWD "deployment\release\MLLab-Setup-$version-x64.exe"
+$installer = Join-Path $PWD "deployment\release\MLLab-Setup-v$version-x64.exe"
 if (-not (Test-Path $installer)) {
     throw "Installer compiler completed without producing $installer"
 }
 
-Write-Host "Developer installer build complete: $installer"
+Write-Host "Windows installer build complete: $installer"

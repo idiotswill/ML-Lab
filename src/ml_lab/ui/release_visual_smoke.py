@@ -70,25 +70,24 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
             controller.shutdown()
             return {"ok": False, "error": "QML root is not a QQuickWindow"}
         window = raw_window
+
+        # GitHub-hosted Windows desktops are smaller than the required 1366x768
+        # release-test viewport. QQuickWindow supports grabWindow() while hidden,
+        # so keep the native Windows window created but not exposed. This prevents
+        # the desktop/window manager from clamping the logical viewport while still
+        # exercising the compiled installed QML on the Windows QPA + requested DPI.
+        app.setQuitOnLastWindowClosed(False)
+        window.hide()
+        app.processEvents()
         window.setWidth(1366)
         window.setHeight(768)
-        window.show()
         app.processEvents()
-
-        # Native Windows may clamp the pre-show geometry to the current desktop.
-        # Re-assert the release-test geometry after the HWND exists, then fail closed
-        # rather than labeling a smaller capture as 1366x768 evidence.
-        for _ in range(3):
-            window.setWidth(1366)
-            window.setHeight(768)
-            app.processEvents()
-            time.sleep(0.05)
 
         if window.width() != 1366 or window.height() != 768:
             controller.shutdown()
             raise RuntimeError(
                 "Release visual smoke could not establish the required "
-                f"1366x768 logical window; got {window.width()}x{window.height()}."
+                f"1366x768 logical viewport; got {window.width()}x{window.height()}."
             )
 
         scale = os.environ.get("QT_SCALE_FACTOR", "1")

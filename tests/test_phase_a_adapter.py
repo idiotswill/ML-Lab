@@ -113,6 +113,15 @@ def test_proposal_cannot_escape_family_slot_or_prebound_envelope() -> None:
     assert adapter.validate_proposal(_request(), changed_prebound).accepted is False
 
 
+def test_proposal_cannot_claim_mechanics_or_other_authority_fields() -> None:
+    adapter = PhaseAResidualAdapter()
+    proposal = _resolve()
+    proposal["damage_roll"] = "1d8+3"
+    result = adapter.validate_proposal(_request(), proposal)
+    assert result.accepted is False
+    assert result.error_code == "UNSUPPORTED_AUTHORITY_FIELD"
+
+
 def test_legacy_entity_keys_and_forbidden_decisions_are_rejected() -> None:
     adapter = PhaseAResidualAdapter()
     legacy = _resolve()

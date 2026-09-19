@@ -51,7 +51,6 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
         app = QGuiApplication(["ml-lab-release-visual-smoke"])
         controller = AppController()
         controller.openWorkspace(str(temp_root / "workspace"), True)
-        controller.createProject("Release Visual Sample", "generic", "UX visual evidence")
 
         engine = QQmlApplicationEngine()
         engine.rootContext().setContextProperty("appController", controller)
@@ -78,7 +77,26 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
         scale_label = scale.replace(".", "_")
         output_dir.mkdir(parents=True, exist_ok=True)
         captures: list[str] = []
+
+        window.setProperty("currentPage", 0)
+        app.processEvents()
+        onboarding_image = window.grabWindow()
+        onboarding_target = output_dir / (
+            f"{theme}-scale-{scale_label}-projects-onboarding.png"
+        )
+        if onboarding_image.isNull() or not onboarding_image.save(str(onboarding_target)):
+            controller.shutdown()
+            raise RuntimeError(
+                f"Could not capture release visual evidence: {onboarding_target}"
+            )
+        captures.append(onboarding_target.name)
+
+        controller.createProject("Release Visual Sample", "generic", "UX visual evidence")
+        app.processEvents()
+
         for index, page_name in enumerate(_PAGE_NAMES):
+            if page_name == "jobs":
+                controller.runSelfTest()
             window.setProperty("currentPage", index)
             app.processEvents()
             image = window.grabWindow()

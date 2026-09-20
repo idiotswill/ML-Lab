@@ -354,13 +354,18 @@ class AppController(QObject):
             self.errorRaised.emit("Export error", str(exc))
 
     def shutdown(self) -> None:
+        self._poller.stop()
         self._redteam_failures.shutdown()
         self._compare.shutdown()
         self._data_studio.shutdown()
         self._diagnostic_pool.clear()
         self._diagnostic_pool.waitForDone(2500)
-        if self._services:
-            self._services.close()
+        services = self._services
+        self._services = None
+        self._catalog = None
+        self._selected_project_id = ""
+        if services:
+            services.close()
 
     def _activate(self, services: LabServices) -> None:
         self._services = services

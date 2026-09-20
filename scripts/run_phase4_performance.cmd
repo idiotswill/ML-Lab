@@ -2,12 +2,12 @@
 setlocal
 
 set "MLLAB_EXE=%LOCALAPPDATA%\Programs\Frankenhomie ML Lab\MLLab.exe"
-set "RECEIPT=%~dp0MLLab-v0.1.0-testing.4-representative-performance.json"
+set "RECEIPT=%~dp0MLLab-v0.1.0-testing.5-representative-performance.json"
 
 if not exist "%MLLAB_EXE%" (
     echo Frankenhomie ML Lab is not installed at the default per-user location:
     echo   %MLLAB_EXE%
-    echo Install MLLab-Setup-v0.1.0-testing.4-x64.exe first, then run this file again.
+    echo Install MLLab-Setup-v0.1.0-testing.5-x64.exe first, then run this file again.
     pause
     exit /b 2
 )

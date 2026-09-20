@@ -165,6 +165,19 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
             encoding="utf-8",
         )
         controller.shutdown()
+        engine.rootContext().setContextProperty("appController", None)
+        window.close()
+        app.processEvents()
+        del onboarding_image
+        del image
+        del window
+        del raw_window
+        roots.clear()
+        del roots
         del engine
+        controller.deleteLater()
+        app.processEvents()
+        del controller
+        app.processEvents()
         del app
         return payload

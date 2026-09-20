@@ -114,6 +114,8 @@ Testing.4 preserves the authority boundary while removing that contention:
 - duplicate/error semantics are preserved, including duplicates against already-authoritative rows;
 - the existing strict zero >100 ms background-import GUI-stall gate remains unchanged.
 
+The first automated `testing.4` build at source head `41ae35454d3a0ee3654bf26c2a99c855c8465a98` was not retained as a candidate. CI run `35526657222` passed Ruff, strict mypy, 135 Ubuntu core tests, Windows core, scale, standalone compilation, and the compiled application/performance smoke. The installed clean-machine workflow also reached and passed its normal prepare stage, but the repeated installed UX evidence harness failed at light/125% during temporary-workspace teardown with Windows `WinError 32` on `lab.db`. The QML/controller object graph was still alive when `TemporaryDirectory` attempted deletion. `testing.5` explicitly stops controller timers/services and destroys the QML/controller references before temporary workspace cleanup. This is a harness lifecycle correction only; no performance gate or authority boundary was weakened.
+
 ## Performance evidence design
 
 The complete candidate includes:

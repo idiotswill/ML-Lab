@@ -12,6 +12,11 @@ env:
   SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
   PHASE4_CANDIDATE_VERSION: "0.1.0-testing.5"
   PHASE4_RELEASE_LABEL: "v0.1.0-testing.5"
+  PHASE4_FROZEN_CANDIDATE_COMMIT: "6c923c528117348639c2d6823bc6fd3ff5fa863e"
+  PHASE4_FROZEN_CANDIDATE_RUN_ID: "35527453293"
+  PHASE4_FROZEN_CANDIDATE_ARTIFACT: "MLLab-phase4-testing-candidate-6c923c528117348639c2d6823bc6fd3ff5fa863e"
+  PHASE4_PHYSICAL_RECEIPT_SHA256: "63fb4aeef5b9191aaa5e6bcf84191d9b394aab6cf1fdf3124f89058786cd0f72"
+  PHASE4_TESTING_READY_MANIFEST_SHA256: "02192d63c258daca77e98c79d1e0c96a789e0ccbab16fb7012b3a141b4f211d9"
 
 jobs:
   core:
@@ -74,6 +79,7 @@ jobs:
         run: uv run pytest -m scale
 
   windows-standalone:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha == '6c923c528117348639c2d6823bc6fd3ff5fa863e' }}
     runs-on: windows-latest
     needs: [core, scale]
     steps:
@@ -211,3 +217,63 @@ jobs:
           path: deployment/release
           if-no-files-found: error
           retention-days: 14
+
+  phase4-testing-ready-promotion:
+    runs-on: ubuntu-latest
+    needs: [core, scale]
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - name: Verify committed physical receipt
+        run: |
+          echo "$PHASE4_PHYSICAL_RECEIPT_SHA256  docs/evidence/phase4/MLLab-v0.1.0-testing.5-representative-performance.json" | sha256sum -c -
+      - name: Download frozen testing.5 candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p deployment/frozen-candidate
+          gh run download "$PHASE4_FROZEN_CANDIDATE_RUN_ID" \
+            --name "$PHASE4_FROZEN_CANDIDATE_ARTIFACT" \
+            --dir deployment/frozen-candidate
+          test -f deployment/frozen-candidate/MLLab-v0.1.0-testing.5-build-manifest.json
+          test -f deployment/frozen-candidate/MLLab-Setup-v0.1.0-testing.5-x64.exe
+          test -f deployment/frozen-candidate/MLLab-v0.1.0-testing.5-windows-x64-portable.zip
+      - name: Promote exact tested bytes to product testing-ready
+        run: |
+          uv run python -m ml_lab.release.promotion \
+            --candidate-manifest deployment/frozen-candidate/MLLab-v0.1.0-testing.5-build-manifest.json \
+            --performance-receipt docs/evidence/phase4/MLLab-v0.1.0-testing.5-representative-performance.json \
+            --candidate-dir deployment/frozen-candidate \
+            --output deployment/testing-ready
+      - name: Verify deterministic promotion manifest
+        run: |
+          echo "$PHASE4_TESTING_READY_MANIFEST_SHA256  deployment/testing-ready/MLLab-v0.1.0-testing.5-testing-ready-manifest.json" | sha256sum -c -
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("deployment/testing-ready/MLLab-v0.1.0-testing.5-testing-ready-manifest.json")
+          data = json.loads(p.read_text(encoding="utf-8"))
+          assert data["testing_ready"] is True
+          assert data["promotion_scope"] == "PRODUCT_TESTING_ONLY"
+          assert data["integration_gate"] == "NO_GO"
+          assert data["model_integration_approved"] is False
+          assert data["source"]["commit"] == "6c923c528117348639c2d6823bc6fd3ff5fa863e"
+          assert data["candidate_build"]["executable_sha256"] == "4af03345b9450a70429d68ceffce5f484bfba582043cc1d6afefe5fee2f89a9e"
+          assert data["representative_performance"]["receipt_sha256"] == "63fb4aeef5b9191aaa5e6bcf84191d9b394aab6cf1fdf3124f89058786cd0f72"
+          PY
+      - name: Retain testing-ready product handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: MLLab-v0.1.0-testing.5-testing-ready-6c923c528117348639c2d6823bc6fd3ff5fa863e
+          path: deployment/testing-ready
+          if-no-files-found: error
+          retention-days: 90

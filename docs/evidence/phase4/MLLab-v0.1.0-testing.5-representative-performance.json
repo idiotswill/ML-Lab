@@ -1,0 +1,155 @@
+{
+  "application_executable": {
+    "filename": "MLLab.exe",
+    "sha256": "4af03345b9450a70429d68ceffce5f484bfba582043cc1d6afefe5fee2f89a9e",
+    "size_bytes": 12286464
+  },
+  "format_version": 2,
+  "gate_evaluable": true,
+  "hard_checks": {
+    "background_import_no_over_100ms_stall": true,
+    "bounded_project_paging": true,
+    "cancellation_visible_within_1s": true,
+    "idle_working_set_under_300mb": true,
+    "ordinary_navigation_no_repeatable_over_100ms_stall": true,
+    "startup_under_4s": true,
+    "worker_load_no_over_100ms_stall": true
+  },
+  "hard_checks_pass": true,
+  "hardware": {
+    "architecture": "AMD64",
+    "cpu": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+    "disk_free_bytes": 76592459776,
+    "disk_total_bytes": 509341593600,
+    "logical_cpus": 12,
+    "nvidia_gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "nvidia_vram_mb": 6141,
+    "os": "Windows",
+    "os_version": "10.0.26200",
+    "ram_bytes": 16435761152
+  },
+  "idle_memory": {
+    "hard_mb": 300,
+    "idle_working_set_mb": 125.93,
+    "target_mb": 220
+  },
+  "instrumentation_checks": {
+    "background_import_completed_and_sampled": true,
+    "bounded_paging_observed": true,
+    "cancellation_observed": true,
+    "compiled_executable_fingerprinted": true,
+    "idle_memory_measured": true,
+    "ordinary_navigation_repeatability_sampled": true,
+    "ordinary_navigation_sampled": true,
+    "startup_interactive_signal": true,
+    "worker_load_sampled": true
+  },
+  "instrumentation_checks_pass": true,
+  "integration_gate": "NO_GO",
+  "kind": "ML_LAB_PHASE4_REPRESENTATIVE_PERFORMANCE",
+  "ok": true,
+  "representative_hardware_review_required": true,
+  "smoke": false,
+  "startup": {
+    "child_interactive_ready_ms": 1069.26,
+    "child_qml_load_ms": 1068.96,
+    "hard_ms": 4000,
+    "interactive_window_ready": true,
+    "process_start_to_qml_ready_ms": 1932.1,
+    "target_ms": 2500,
+    "working_set_at_ready_mb": 126.88
+  },
+  "targets": {
+    "cancellation_visible_threshold_ms": 1000,
+    "gui_stall_threshold_ms": 100,
+    "idle_working_set_hard_mb": 300,
+    "idle_working_set_target_mb": 220,
+    "ordinary_navigation_repeatability_rounds": 3,
+    "repeatable_stall_rounds_required": 2,
+    "startup_hard_ms": 4000,
+    "startup_target_ms": 2500
+  },
+  "testing_ready_authorized": false,
+  "ui": {
+    "background_import": {
+      "completed": true,
+      "imported_rows": 20000,
+      "max_navigation_process_ms": 92.85,
+      "max_scheduler_delay_ms": 4.76,
+      "max_stall_ms": 92.85,
+      "navigation_stalls_over_100ms": 0,
+      "samples": 759,
+      "scheduler_delays_over_100ms": 0,
+      "stalls_over_100ms": 0
+    },
+    "background_rows_requested": 20000,
+    "cancellation": {
+      "terminal_cancelled": true,
+      "terminal_status": "CANCELLED",
+      "visible_ack_ms": 37.43,
+      "visible_status": "CANCELLING"
+    },
+    "idle_navigation": {
+      "completed": true,
+      "max_navigation_process_ms": 60.71,
+      "max_scheduler_delay_ms": 0.62,
+      "max_stall_ms": 60.71,
+      "repeatable_navigation_over_100ms": false,
+      "rounds": [
+        {
+          "completed": true,
+          "max_navigation_process_ms": 60.71,
+          "max_scheduler_delay_ms": 0.62,
+          "max_stall_ms": 60.71,
+          "navigation_stalls_over_100ms": 0,
+          "samples": 108,
+          "scheduler_delays_over_100ms": 0,
+          "stalls_over_100ms": 0
+        },
+        {
+          "completed": true,
+          "max_navigation_process_ms": 16.59,
+          "max_scheduler_delay_ms": 0.61,
+          "max_stall_ms": 16.59,
+          "navigation_stalls_over_100ms": 0,
+          "samples": 121,
+          "scheduler_delays_over_100ms": 0,
+          "stalls_over_100ms": 0
+        },
+        {
+          "completed": true,
+          "max_navigation_process_ms": 16.03,
+          "max_scheduler_delay_ms": 0.57,
+          "max_stall_ms": 16.03,
+          "navigation_stalls_over_100ms": 0,
+          "samples": 124,
+          "scheduler_delays_over_100ms": 0,
+          "stalls_over_100ms": 0
+        }
+      ],
+      "rounds_completed": 3,
+      "rounds_requested": 3,
+      "rounds_with_navigation_over_100ms": 0,
+      "samples": 353,
+      "total_navigation_stalls_over_100ms": 0,
+      "total_scheduler_delays_over_100ms": 0
+    },
+    "materialized_page_examples": 100,
+    "page_materialize_ms": 75.0,
+    "primary_rows": 100000,
+    "project_open_ms": 14.68,
+    "worker_load": {
+      "completed": true,
+      "job_id": "ae8acf8b-0165-4c78-9599-0da2705f01c3",
+      "max_navigation_process_ms": 51.87,
+      "max_scheduler_delay_ms": 0.58,
+      "max_stall_ms": 51.87,
+      "navigation_stalls_over_100ms": 0,
+      "samples": 115,
+      "scheduler_delays_over_100ms": 0,
+      "stalls_over_100ms": 0,
+      "task_type": "core.performance_load"
+    },
+    "workspace_open_ms": 13.53
+  }
+}

@@ -122,20 +122,22 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
                 raise RuntimeError(f"Could not capture release visual evidence: {target}")
             captures.append(target.name)
 
-        def active_visual_jobs() -> list[dict[str, object]]:
-            jobs = cast(list[dict[str, object]], controller.jobs)
+        def active_visual_jobs(
+            current_controller: AppController,
+        ) -> list[dict[str, object]]:
+            jobs = cast(list[dict[str, object]], current_controller.jobs)
             return [
                 job
                 for job in jobs
                 if job.get("status") in {"QUEUED", "RUNNING"}
             ]
 
-        active_jobs = active_visual_jobs()
+        active_jobs = active_visual_jobs(controller)
         deadline = time.monotonic() + 5.0
         while active_jobs and time.monotonic() < deadline:
             app.processEvents()
             time.sleep(0.05)
-            active_jobs = active_visual_jobs()
+            active_jobs = active_visual_jobs(controller)
 
         if active_jobs:
             for job in active_jobs:
@@ -144,7 +146,7 @@ def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
             while active_jobs and time.monotonic() < deadline:
                 app.processEvents()
                 time.sleep(0.05)
-                active_jobs = active_visual_jobs()
+                active_jobs = active_visual_jobs(controller)
 
         if active_jobs:
             controller.shutdown()

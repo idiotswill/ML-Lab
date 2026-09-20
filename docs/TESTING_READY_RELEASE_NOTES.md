@@ -1,6 +1,8 @@
-# v0.1.0-testing.1 Release Notes
+# v0.1.0-testing.2 Release Notes
 
 Status: **candidate notes — testing-ready promotion pending representative physical-Windows performance evidence**
+
+`v0.1.0-testing.1` was not promoted: its real physical-Windows receipt correctly found one 132.31 ms GUI stall at background-import completion. `testing.2` moves the expensive Data Studio completion refresh off the GUI database path and preserves that failure as a regression.
 
 ## Scope
 

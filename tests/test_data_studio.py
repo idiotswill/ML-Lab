@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from ml_lab.adapters.builtin import dataset_validator_for
 from ml_lab.core.models import DatasetSplit, DatasetState
 from ml_lab.datasets.service import DatasetService

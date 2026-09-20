@@ -1,4 +1,4 @@
-# v0.1.0-testing.3 Candidate / Testing Guide
+# v0.1.0-testing.4 Candidate / Testing Guide
 
 This guide belongs to the complete Phase 4 Windows candidate. The candidate is not `TESTING_READY` until the representative-machine gate passes and a testing-ready release manifest is produced.
 
@@ -6,8 +6,8 @@ This guide belongs to the complete Phase 4 Windows candidate. The candidate is n
 
 The retained Phase 4 candidate artifact contains:
 
-- `MLLab-Setup-v0.1.0-testing.3-x64.exe`;
-- `MLLab-v0.1.0-testing.3-windows-x64-portable.zip`;
+- `MLLab-Setup-v0.1.0-testing.4-x64.exe`;
+- `MLLab-v0.1.0-testing.4-windows-x64-portable.zip`;
 - candidate build/provenance manifest;
 - SHA-256 evidence for the standalone tree, installer and portable archive;
 - compiled performance-smoke evidence;
@@ -31,7 +31,7 @@ After installation, run:
 
 The helper runs the full physical-machine gate against the installed `MLLab.exe` and writes:
 
-`MLLab-v0.1.0-testing.3-representative-performance.json`
+`MLLab-v0.1.0-testing.4-representative-performance.json`
 
 next to the helper.
 

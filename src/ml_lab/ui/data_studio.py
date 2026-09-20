@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from dataclasses import asdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from PySide6.QtCore import Property, QObject, QRunnable, QThreadPool, QUrl, Signal, Slot
 
 from ml_lab.adapters.builtin import contract_capture_descriptor_for, dataset_validator_for
 from ml_lab.contracts.snapshot import ContractSnapshotService
 from ml_lab.core.models import DatasetExample, DatasetSplit, DatasetState, DatasetVersion
+from ml_lab.core.process import application_command
 from ml_lab.datasets.service import DatasetService
 from ml_lab.storage.workspace import Workspace
 
@@ -45,15 +49,25 @@ class _DatasetOperation(QRunnable):
     @Slot()
     def run(self) -> None:
         try:
-            result = _perform_dataset_operation(
-                workspace_root=self.workspace_root,
-                operation=self.operation,
-                dataset_id=self.dataset_id,
-                adapter_id=self.adapter_id,
-                source=self.source,
-                split_filter=self.split_filter,
-                page_size=self.page_size,
-            )
+            if self.operation == "import":
+                result = _perform_dataset_import_via_child(
+                    workspace_root=self.workspace_root,
+                    dataset_id=self.dataset_id,
+                    adapter_id=self.adapter_id,
+                    source=self.source,
+                    split_filter=self.split_filter,
+                    page_size=self.page_size,
+                )
+            else:
+                result = _perform_dataset_operation(
+                    workspace_root=self.workspace_root,
+                    operation=self.operation,
+                    dataset_id=self.dataset_id,
+                    adapter_id=self.adapter_id,
+                    source=self.source,
+                    split_filter=self.split_filter,
+                    page_size=self.page_size,
+                )
         except Exception as exc:
             self.signals.failed.emit(
                 self.context_token,
@@ -441,6 +455,78 @@ class DataStudioController(QObject):
         self.changed.emit()
         title = "Import error" if operation == "import" else "Freeze error"
         self.operationFailed.emit(title, error)
+
+
+def _perform_dataset_import_via_child(
+    *,
+    workspace_root: Path,
+    dataset_id: str,
+    adapter_id: str,
+    source: Path | None,
+    split_filter: str = "ALL",
+    page_size: int = 100,
+) -> dict[str, object]:
+    if source is None:
+        raise ValueError("Import source is required.")
+    cache_root = workspace_root / "cache"
+    cache_root.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix="dataset-import-", dir=cache_root) as temp_dir:
+        temp_root = Path(temp_dir)
+        staged_database = temp_root / "prepared.sqlite"
+        summary_path = temp_root / "summary.json"
+        spec_path = temp_root / "spec.json"
+        spec_path.write_text(
+            json.dumps(
+                {
+                    "format_version": 1,
+                    "source": str(source),
+                    "staged_database": str(staged_database),
+                    "summary_path": str(summary_path),
+                    "adapter_id": adapter_id,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+        child = subprocess.run(
+            application_command("--dataset-import-stage-child", str(spec_path)),
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+            creationflags=flags,
+        )
+        if child.returncode != 0:
+            detail = child.stderr.strip() or child.stdout.strip() or "unknown error"
+            raise RuntimeError(f"Dataset import child failed: {detail[-2000:]}")
+        if not summary_path.is_file() or not staged_database.is_file():
+            raise RuntimeError("Dataset import child did not produce staged output.")
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        if not isinstance(summary, dict):
+            raise ValueError("Dataset import child summary must be an object.")
+
+        workspace = Workspace.open(workspace_root)
+        service = DatasetService(workspace)
+        dataset = service.get(dataset_id)
+        result = service.commit_prepared_import(
+            dataset_id,
+            staged_database,
+            {str(key): value for key, value in summary.items()},
+        ).to_dict()
+        result["view_snapshot"] = _build_view_snapshot(
+            workspace=workspace,
+            project_id=dataset.project_id,
+            selected_dataset_id=dataset_id,
+            split_filter=split_filter,
+            offset=0,
+            page_size=page_size,
+        )
+        return result
 
 
 def _perform_dataset_operation(

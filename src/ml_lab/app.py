@@ -28,6 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ML Lab")
     parser.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
     parser.add_argument(
+        "--dataset-import-stage-child",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--phase-a-validator-child",
         type=Path,
         help=argparse.SUPPRESS,
@@ -122,6 +127,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.worker:
         return run_worker(args.worker)
+    if args.dataset_import_stage_child:
+        from ml_lab.datasets.import_stage import run_import_stage_child
+
+        return run_import_stage_child(args.dataset_import_stage_child)
     if args.phase_a_validator_child:
         from ml_lab.adapters.phase_a_reference import run_reference_validator_child
 

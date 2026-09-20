@@ -79,14 +79,40 @@ The testing.1 regression was fixed: the 20,000-row background import completed w
 
 Testing.2 recorded one 116.83 ms ordinary-navigation event-processing sample across 77 samples. The harness treated any single >100 ms observation as failure, but the binding `QUALITY_GATES.md` wording is "ordinary navigation/input shows no **repeatable** >100 ms GUI-thread stall." Because testing.2 did not capture independent repeatability rounds, it cannot be reinterpreted or promoted after the fact.
 
-Testing.3 corrects the evidence contract rather than lowering the threshold:
-- the GUI-thread threshold remains 100 ms;
-- ordinary navigation is measured in three independent rounds;
-- an over-threshold GUI event-processing stall is "repeatable" only when it recurs in at least two rounds;
-- raw isolated spikes remain recorded;
-- OS scheduler delay is recorded separately and is not mislabeled as GUI-thread execution;
-- background import and worker-load navigation retain strict zero >100 ms GUI-thread-stall checks;
-- the receipt schema is bumped to format version 2, and promotion rejects old-schema receipts.
+Testing.3 corrected the evidence contract rather than lowering the threshold:
+- the GUI-thread threshold remained 100 ms;
+- ordinary navigation was measured in three independent rounds;
+- an over-threshold GUI event-processing stall was "repeatable" only when it recurred in at least two rounds;
+- raw isolated spikes remained recorded;
+- OS scheduler delay was recorded separately and was not mislabeled as GUI-thread execution;
+- background import and worker-load navigation retained strict zero >100 ms GUI-thread-stall checks;
+- the receipt schema was bumped to format version 2, and promotion rejects old-schema receipts.
+
+## Preserved testing.3 physical failure
+
+The third physical-machine candidate, `v0.1.0-testing.3` at source head `6ade3a032bba5d0a3854f07f2f1a5550d8912d1d`, was **not** promoted.
+
+Its full representative receipt is format version 2, gate-evaluable, and bound to executable SHA-256:
+
+`d5b59f5f3a342221a8d31264adfe46d97ad9727206181f628daea7d54850d97c`
+
+Receipt SHA-256:
+
+`df872e77e97ad01b11e97e0af32db7e54a690d766784d3a280839f39cc526ea8`
+
+Testing.3 proved the repeatability harness behaves correctly: all three ordinary-navigation rounds passed, with 340 samples total, zero >100 ms GUI event-processing stalls, zero >100 ms scheduler delays, and a maximum ordinary-navigation sample of 59.10 ms. Startup (~1422.58 ms), idle RAM (~126.13 MB), 100k bounded paging, CPU-worker navigation, cancellation (~49.81 ms), and all instrumentation checks also passed.
+
+The remaining failure was genuine background-import responsiveness. The full 20,000-row import completed, but the GUI process recorded three event-processing stalls above 100 ms, peaking at 130.43 ms. Scheduler delay remained below 5 ms, so these were not external scheduler artifacts.
+
+Root cause: Data Studio import was running in a `QThreadPool` thread but still inside the Qt/Python process. JSON parsing, adapter validation, fingerprinting, and per-row Python work therefore competed for the interpreter/GIL and could starve Qt despite not running on the GUI thread itself.
+
+Testing.4 preserves the authority boundary while removing that contention:
+- a dedicated hidden child mode parses, validates, fingerprints, and writes only a disposable staged SQLite database;
+- the child never opens or mutates the authoritative ML Lab workspace database;
+- the parent process remains the sole metadata authority;
+- the parent commits staged rows using set-based SQLite rather than a Python per-row loop;
+- duplicate/error semantics are preserved, including duplicates against already-authoritative rows;
+- the existing strict zero >100 ms background-import GUI-stall gate remains unchanged.
 
 ## Performance evidence design
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -161,7 +161,6 @@ class DatasetService:
         dataset = self.get(dataset_id)
         if dataset.state is not DatasetState.DRAFT:
             raise RuntimeError("Only DRAFT datasets can accept imported examples.")
-        validate = validator or _generic_validator
         errors: list[ImportErrorRecord] = []
         imported = 0
         rejected = 0
@@ -179,7 +178,12 @@ class DatasetService:
                     if not isinstance(decoded, dict):
                         raise ValueError("JSONL row must be an object.")
                     row = {str(key): value for key, value in decoded.items()}
-                    item = validate(row, line_number, source_name)
+                    item = validate_example_row(
+                        row,
+                        line_number,
+                        source_name,
+                        validator=validator,
+                    )
                     _insert_example(conn, dataset_id, item)
                     imported += 1
                 except (
@@ -224,6 +228,152 @@ class DatasetService:
                 metadata={"dataset_id": dataset_id, "import_id": import_id},
             )
             error_report_digest = ref.digest
+        with self.database.transaction() as conn:
+            conn.execute(
+                "INSERT INTO dataset_imports"
+                "(id,dataset_id,source_name,imported,rejected,"
+                "error_report_artifact_digest,created_at) VALUES(?,?,?,?,?,?,?)",
+                (
+                    import_id,
+                    dataset_id,
+                    source_name,
+                    imported,
+                    rejected,
+                    error_report_digest,
+                    created_at,
+                ),
+            )
+        return ImportSummary(
+            imported=imported,
+            rejected=rejected,
+            errors=tuple(errors),
+            import_id=import_id,
+            error_report_artifact_digest=error_report_digest,
+        )
+
+    def commit_prepared_import(
+        self,
+        dataset_id: str,
+        staged_database: Path,
+        prepared_summary: Mapping[str, object],
+        *,
+        max_reported_errors: int = 1000,
+    ) -> ImportSummary:
+        """Commit a child-prepared import into authoritative Lab metadata.
+
+        The child process may parse, validate, fingerprint, and stage rows, but it never
+        mutates the Lab workspace database. This parent-side method performs the only
+        authoritative dataset mutation.
+        """
+        dataset = self.get(dataset_id)
+        if dataset.state is not DatasetState.DRAFT:
+            raise RuntimeError("Only DRAFT datasets can accept imported examples.")
+        if not staged_database.is_file():
+            raise FileNotFoundError(staged_database)
+
+        source_name_raw = prepared_summary.get("source_name")
+        if not isinstance(source_name_raw, str) or not source_name_raw:
+            raise ValueError("Prepared import summary is missing source_name.")
+        source_name = source_name_raw
+        rejected_raw = prepared_summary.get("rejected")
+        if isinstance(rejected_raw, bool) or not isinstance(rejected_raw, int):
+            raise ValueError("Prepared import summary rejected count is invalid.")
+        prepared_rejected = rejected_raw
+        errors = _prepared_import_errors(
+            prepared_summary.get("errors"),
+            limit=max_reported_errors,
+        )
+
+        duplicate_count = 0
+        candidate_count = 0
+        with self.database.transaction() as conn:
+            conn.execute("ATTACH DATABASE ? AS prepared", (str(staged_database),))
+            candidate_row = conn.execute(
+                "SELECT COUNT(*) FROM prepared.prepared_examples"
+            ).fetchone()
+            candidate_count = int(candidate_row[0]) if candidate_row else 0
+            duplicate_row = conn.execute(
+                "SELECT COUNT(*) FROM prepared.prepared_examples p "
+                "WHERE EXISTS ("
+                "SELECT 1 FROM dataset_examples d "
+                "WHERE d.dataset_id=? AND d.example_id=p.example_id"
+                ")",
+                (dataset_id,),
+            ).fetchone()
+            duplicate_count = int(duplicate_row[0]) if duplicate_row else 0
+
+            remaining = max(0, max_reported_errors - len(errors))
+            if remaining:
+                duplicate_rows = conn.execute(
+                    "SELECT p.line_number,p.example_id "
+                    "FROM prepared.prepared_examples p "
+                    "WHERE EXISTS ("
+                    "SELECT 1 FROM dataset_examples d "
+                    "WHERE d.dataset_id=? AND d.example_id=p.example_id"
+                    ") ORDER BY p.line_number LIMIT ?",
+                    (dataset_id, remaining),
+                ).fetchall()
+                errors.extend(
+                    ImportErrorRecord(
+                        line_number=int(row["line_number"]),
+                        code="DUPLICATE_OR_CONSTRAINT",
+                        message=(
+                            f"example_id {row['example_id']!r} already exists "
+                            "in this dataset"
+                        ),
+                    )
+                    for row in duplicate_rows
+                )
+
+            conn.execute(
+                "INSERT INTO dataset_examples("
+                "dataset_id,example_id,split,source_id,lineage_group,fingerprint,"
+                "normalized_fingerprint,near_signature,payload_json,label_json,"
+                "tags_json,created_at"
+                ") SELECT ?,p.example_id,p.split,p.source_id,p.lineage_group,"
+                "p.fingerprint,p.normalized_fingerprint,p.near_signature,"
+                "p.payload_json,p.label_json,p.tags_json,p.created_at "
+                "FROM prepared.prepared_examples p "
+                "WHERE NOT EXISTS ("
+                "SELECT 1 FROM dataset_examples d "
+                "WHERE d.dataset_id=? AND d.example_id=p.example_id"
+                ") ORDER BY p.line_number",
+                (dataset_id, dataset_id),
+            )
+            conn.execute(
+                "UPDATE dataset_versions SET example_count=("
+                "SELECT COUNT(*) FROM dataset_examples WHERE dataset_id=?"
+                ") WHERE id=?",
+                (dataset_id, dataset_id),
+            )
+
+        imported = candidate_count - duplicate_count
+        rejected = prepared_rejected + duplicate_count
+        errors.sort(key=lambda item: item.line_number)
+        if len(errors) > max_reported_errors:
+            errors = errors[:max_reported_errors]
+
+        import_id = str(uuid.uuid4())
+        created_at = utc_now_iso()
+        error_report_digest: str | None = None
+        if rejected:
+            report = {
+                "format_version": 1,
+                "import_id": import_id,
+                "dataset_id": dataset_id,
+                "source_name": source_name,
+                "imported": imported,
+                "rejected": rejected,
+                "errors_truncated": rejected > len(errors),
+                "errors": [error.to_dict() for error in errors],
+            }
+            ref = self.artifacts.commit_bytes(
+                (canonical_json(report) + "\n").encode("utf-8"),
+                media_type="application/vnd.ml-lab.import-errors+json",
+                metadata={"dataset_id": dataset_id, "import_id": import_id},
+            )
+            error_report_digest = ref.digest
+
         with self.database.transaction() as conn:
             conn.execute(
                 "INSERT INTO dataset_imports"
@@ -484,6 +634,7 @@ def _insert_example(
     dataset_id: str,
     item: ValidatedExampleInput,
 ) -> None:
+    record = prepared_example_record(item)
     conn.execute(
         "INSERT INTO dataset_examples"
         "(dataset_id,example_id,split,source_id,lineage_group,fingerprint,"
@@ -491,19 +642,73 @@ def _insert_example(
         "tags_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             dataset_id,
-            item.example_id,
-            item.split.value,
-            item.source_id,
-            item.lineage_group,
-            content_fingerprint(item.payload),
-            normalized_fingerprint(item.payload),
-            near_signature(item.payload),
-            canonical_json(item.payload),
-            canonical_json(item.label),
-            canonical_json(list(item.tags)),
-            utc_now_iso(),
+            record["example_id"],
+            record["split"],
+            record["source_id"],
+            record["lineage_group"],
+            record["fingerprint"],
+            record["normalized_fingerprint"],
+            record["near_signature"],
+            record["payload_json"],
+            record["label_json"],
+            record["tags_json"],
+            record["created_at"],
         ),
     )
+
+
+def validate_example_row(
+    row: dict[str, object],
+    line_number: int,
+    source_name: str,
+    *,
+    validator: ExampleValidator | None = None,
+) -> ValidatedExampleInput:
+    return (validator or _generic_validator)(row, line_number, source_name)
+
+
+def prepared_example_record(item: ValidatedExampleInput) -> dict[str, str]:
+    return {
+        "example_id": item.example_id,
+        "split": item.split.value,
+        "source_id": item.source_id,
+        "lineage_group": item.lineage_group,
+        "fingerprint": content_fingerprint(item.payload),
+        "normalized_fingerprint": normalized_fingerprint(item.payload),
+        "near_signature": near_signature(item.payload),
+        "payload_json": canonical_json(item.payload),
+        "label_json": canonical_json(item.label),
+        "tags_json": canonical_json(list(item.tags)),
+        "created_at": utc_now_iso(),
+    }
+
+
+def _prepared_import_errors(value: object, *, limit: int) -> list[ImportErrorRecord]:
+    if not isinstance(value, list):
+        raise ValueError("Prepared import summary errors must be a list.")
+    result: list[ImportErrorRecord] = []
+    for raw in value[:limit]:
+        if not isinstance(raw, dict):
+            raise ValueError("Prepared import error entry must be an object.")
+        line_number = raw.get("line_number")
+        code = raw.get("code")
+        message = raw.get("message")
+        if (
+            isinstance(line_number, bool)
+            or not isinstance(line_number, int)
+            or line_number < 1
+            or not isinstance(code, str)
+            or not isinstance(message, str)
+        ):
+            raise ValueError("Prepared import error entry is invalid.")
+        result.append(
+            ImportErrorRecord(
+                line_number=line_number,
+                code=code,
+                message=message,
+            )
+        )
+    return result
 
 
 def _generic_validator(

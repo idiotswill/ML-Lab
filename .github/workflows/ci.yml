@@ -10,8 +10,8 @@ on:
 
 env:
   SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-  PHASE4_CANDIDATE_VERSION: "0.1.0-testing.3"
-  PHASE4_RELEASE_LABEL: "v0.1.0-testing.3"
+  PHASE4_CANDIDATE_VERSION: "0.1.0-testing.4"
+  PHASE4_RELEASE_LABEL: "v0.1.0-testing.4"
 
 jobs:
   core:

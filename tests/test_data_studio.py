@@ -7,9 +7,14 @@ import pytest
 
 from ml_lab.adapters.builtin import dataset_validator_for
 from ml_lab.core.models import DatasetSplit, DatasetState
+from ml_lab.datasets.import_stage import prepare_import_stage
 from ml_lab.datasets.service import DatasetService
 from ml_lab.storage.workspace import Workspace
-from ml_lab.ui.data_studio import DataStudioController, _perform_dataset_operation
+from ml_lab.ui.data_studio import (
+    DataStudioController,
+    _perform_dataset_import_via_child,
+    _perform_dataset_operation,
+)
 
 
 def test_data_studio_import_and_freeze_use_real_dataset_contract(tmp_path: Path) -> None:
@@ -56,9 +61,8 @@ def test_data_studio_import_and_freeze_use_real_dataset_contract(tmp_path: Path)
         encoding="utf-8",
     )
 
-    imported = _perform_dataset_operation(
+    imported = _perform_dataset_import_via_child(
         workspace_root=workspace.root,
-        operation="import",
         dataset_id=dataset.id,
         adapter_id="generic",
         source=source,
@@ -150,3 +154,82 @@ def test_import_completion_uses_worker_prepared_view_snapshot(
         assert controller.selectedDataset["example_count"] == 1
     finally:
         controller.shutdown()
+
+
+
+def test_import_stage_never_mutates_workspace_before_parent_commit(tmp_path: Path) -> None:
+    workspace = Workspace.create(tmp_path / "workspace-stage")
+    project = workspace.create_project("Import stage boundary", "generic")
+    service = DatasetService(workspace)
+    dataset = service.create(project.id, "v1")
+
+    seed = tmp_path / "seed.jsonl"
+    seed.write_text(
+        json.dumps(
+            {
+                "example_id": "existing",
+                "split": "TRAIN",
+                "source_id": "synthetic:existing",
+                "lineage_group": "existing",
+                "payload": {"text": "already authoritative"},
+                "label": {"class": "A"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    seeded = service.import_jsonl(dataset.id, seed)
+    assert seeded.imported == 1
+
+    source = tmp_path / "stage.jsonl"
+    rows = [
+        {
+            "example_id": "existing",
+            "split": "TRAIN",
+            "source_id": "synthetic:existing-again",
+            "lineage_group": "existing-again",
+            "payload": {"text": "duplicate against authoritative dataset"},
+            "label": {"class": "A"},
+        },
+        {
+            "example_id": "fresh",
+            "split": "DEV",
+            "source_id": "synthetic:fresh",
+            "lineage_group": "fresh",
+            "payload": {"text": "fresh staged row"},
+            "label": {"class": "B"},
+        },
+        {
+            "example_id": "fresh",
+            "split": "TEST",
+            "source_id": "synthetic:fresh-duplicate",
+            "lineage_group": "fresh-duplicate",
+            "payload": {"text": "duplicate inside staged source"},
+            "label": {"class": "C"},
+        },
+    ]
+    source.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    staged = tmp_path / "prepared.sqlite"
+    summary = prepare_import_stage(
+        source=source,
+        staged_database=staged,
+        adapter_id="generic",
+    )
+
+    assert service.get(dataset.id).example_count == 1
+    assert len(service.page_examples(dataset.id, limit=100)) == 1
+    assert summary["accepted"] == 2
+    assert summary["rejected"] == 1
+
+    committed = service.commit_prepared_import(dataset.id, staged, summary)
+    assert committed.imported == 1
+    assert committed.rejected == 2
+    assert {error.code for error in committed.errors} == {"DUPLICATE_OR_CONSTRAINT"}
+    assert service.get(dataset.id).example_count == 2
+    assert {item.example_id for item in service.page_examples(dataset.id)} == {
+        "existing",
+        "fresh",
+    }

@@ -45,6 +45,24 @@ No Phase A residual-semantic contract drift was found during the current product
 | Performance instrumentation | PASS | compiled candidate measures interactive startup, idle RAM, UI stalls, bounded paging, background import, CPU-heavy worker navigation, cancellation visibility |
 | Representative physical-Windows performance | **PENDING** | full 100k gate must be run on the complete candidate on representative modern Windows hardware |
 
+## Preserved testing.1 physical failure
+
+The first physical-machine candidate, `v0.1.0-testing.1` at source head `3f5dc329c6615cf66d1e7bd6a9abdda33d5e303a`, was **not** promoted.
+
+Its full representative receipt was gate-evaluable and bound to candidate executable SHA-256:
+
+`97b6eef28ca20260a2a2ce2508527010ed9d5d579b4a7b59463de01b4aee61c6`
+
+Receipt SHA-256:
+
+`b13c7813e21b7ae0a4532721387d09a84f338d46bad575942a80e151207faff8`
+
+The receipt passed startup, idle RAM, ordinary navigation, 100k bounded paging, CPU-worker navigation, cancellation responsiveness, and all instrumentation checks. It failed exactly one hard check: the 20,000-row background import produced one 132.31 ms GUI-thread navigation/process-events stall, above the 100 ms hard threshold.
+
+No threshold was weakened and no testing-ready manifest was produced. The failure led to a Data Studio fix that prepares the post-import view snapshot on the worker thread and applies cached view state on the GUI thread rather than re-querying dataset state during completion notification.
+
+The corrected binary is issued as `v0.1.0-testing.2` so the failed `testing.1` bytes remain unambiguous evidence.
+
 ## Performance evidence design
 
 The complete candidate includes:

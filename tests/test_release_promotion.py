@@ -47,7 +47,7 @@ def _candidate(tmp_path: Path) -> tuple[Path, Path, Path, Path, dict[str, object
     candidate_installer.write_bytes(installer.read_bytes())
 
     receipt = {
-        "format_version": 1,
+        "format_version": 2,
         "kind": "ML_LAB_PHASE4_REPRESENTATIVE_PERFORMANCE",
         "ok": True,
         "smoke": False,
@@ -63,11 +63,17 @@ def _candidate(tmp_path: Path) -> tuple[Path, Path, Path, Path, dict[str, object
             "primary_rows": 100_000,
             "materialized_page_examples": 100,
             "background_rows_requested": 20_000,
+            "idle_navigation": {
+                "rounds_requested": 3,
+                "rounds_completed": 3,
+                "rounds_with_navigation_over_100ms": 1,
+                "repeatable_navigation_over_100ms": False,
+            },
         },
         "hard_checks": {
             "startup_under_4s": True,
             "idle_working_set_under_300mb": True,
-            "ordinary_navigation_no_over_100ms_stall": True,
+            "ordinary_navigation_no_repeatable_over_100ms_stall": True,
             "bounded_project_paging": True,
             "background_import_no_over_100ms_stall": True,
             "worker_load_no_over_100ms_stall": True,
@@ -78,6 +84,7 @@ def _candidate(tmp_path: Path) -> tuple[Path, Path, Path, Path, dict[str, object
             "startup_interactive_signal": True,
             "idle_memory_measured": True,
             "ordinary_navigation_sampled": True,
+            "ordinary_navigation_repeatability_sampled": True,
             "bounded_paging_observed": True,
             "background_import_completed_and_sampled": True,
             "worker_load_sampled": True,
@@ -145,6 +152,47 @@ def test_testing_ready_promotion_rejects_other_executable(tmp_path: Path) -> Non
     receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
 
     with pytest.raises(ValueError, match="executable hash"):
+        promote_testing_ready(
+            candidate_manifest_path=manifest,
+            performance_receipt_path=receipt_path,
+            candidate_dir=candidate_dir,
+            output_dir=tmp_path / "release",
+        )
+
+
+
+def test_testing_ready_promotion_rejects_old_performance_schema(tmp_path: Path) -> None:
+    candidate_dir, _portable, manifest, receipt_path, receipt = _candidate(tmp_path)
+    receipt["format_version"] = 1
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="schema"):
+        promote_testing_ready(
+            candidate_manifest_path=manifest,
+            performance_receipt_path=receipt_path,
+            candidate_dir=candidate_dir,
+            output_dir=tmp_path / "release",
+        )
+
+
+def test_testing_ready_promotion_rejects_repeatable_navigation_stall(
+    tmp_path: Path,
+) -> None:
+    candidate_dir, _portable, manifest, receipt_path, receipt = _candidate(tmp_path)
+    ui = receipt["ui"]
+    assert isinstance(ui, dict)
+    ordinary = ui["idle_navigation"]
+    assert isinstance(ordinary, dict)
+    ordinary["rounds_with_navigation_over_100ms"] = 2
+    ordinary["repeatable_navigation_over_100ms"] = True
+    hard = receipt["hard_checks"]
+    assert isinstance(hard, dict)
+    hard["ordinary_navigation_no_repeatable_over_100ms_stall"] = False
+    receipt["hard_checks_pass"] = False
+    receipt["ok"] = False
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="did not pass"):
         promote_testing_ready(
             candidate_manifest_path=manifest,
             performance_receipt_path=receipt_path,

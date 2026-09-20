@@ -11,6 +11,8 @@ from pathlib import Path
 _FULL_ROWS = 100_000
 _FULL_IMPORT_ROWS = 20_000
 _PAGE_SIZE = 100
+_ORDINARY_NAVIGATION_ROUNDS = 3
+_REPEATABLE_STALL_ROUNDS = 2
 
 
 def promote_testing_ready(
@@ -143,6 +145,8 @@ def _validate_candidate(candidate: Mapping[str, object]) -> None:
 
 
 def _validate_performance_receipt(receipt: Mapping[str, object]) -> None:
+    if _require_int(receipt, "format_version") != 2:
+        raise ValueError("Representative performance receipt schema is not current.")
     if _require_str(receipt, "kind") != "ML_LAB_PHASE4_REPRESENTATIVE_PERFORMANCE":
         raise ValueError("Unexpected representative performance receipt kind.")
     if not _require_bool(receipt, "gate_evaluable"):
@@ -169,6 +173,8 @@ def _validate_performance_receipt(receipt: Mapping[str, object]) -> None:
     hard_checks = _require_dict(receipt, "hard_checks")
     if not hard_checks or not all(value is True for value in hard_checks.values()):
         raise ValueError("Every representative performance hard check must pass.")
+    if hard_checks.get("ordinary_navigation_no_repeatable_over_100ms_stall") is not True:
+        raise ValueError("Ordinary navigation repeatability gate did not pass.")
     instrumentation = _require_dict(receipt, "instrumentation_checks")
     if not instrumentation or not all(value is True for value in instrumentation.values()):
         raise ValueError("Every performance instrumentation check must pass.")
@@ -180,6 +186,18 @@ def _validate_performance_receipt(receipt: Mapping[str, object]) -> None:
         raise ValueError("Representative performance paging must remain bounded to 100.")
     if _require_int(ui, "background_rows_requested") != _FULL_IMPORT_ROWS:
         raise ValueError("Representative background import workload is incomplete.")
+
+    ordinary = _require_dict(ui, "idle_navigation")
+    if _require_int(ordinary, "rounds_requested") != _ORDINARY_NAVIGATION_ROUNDS:
+        raise ValueError("Ordinary navigation repeatability round count is incomplete.")
+    if _require_int(ordinary, "rounds_completed") != _ORDINARY_NAVIGATION_ROUNDS:
+        raise ValueError("Ordinary navigation repeatability rounds did not complete.")
+    if _require_bool(ordinary, "repeatable_navigation_over_100ms"):
+        raise ValueError("Ordinary navigation contains a repeatable >100 ms GUI stall.")
+    if _require_int(ordinary, "rounds_with_navigation_over_100ms") >= _REPEATABLE_STALL_ROUNDS:
+        raise ValueError("Ordinary navigation repeatability evidence is inconsistent.")
+    if instrumentation.get("ordinary_navigation_repeatability_sampled") is not True:
+        raise ValueError("Ordinary navigation repeatability instrumentation is missing.")
 
     executable = _require_dict(receipt, "application_executable")
     if _require_str(executable, "filename").casefold() != "mllab.exe":

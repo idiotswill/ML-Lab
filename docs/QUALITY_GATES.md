@@ -138,7 +138,7 @@ A Windows CI/VM smoke pass must:
 
 - on the representative modern Windows laptop: process start -> first interactive window target <= 2.5 s, hard gate <= 4.0 s;
 - on that machine: idle base app working set target <= 220 MB, hard gate <= 300 MB;
-- ordinary navigation/input shows no repeatable >100 ms GUI-thread stall;
+- ordinary navigation/input shows no repeatable >100 ms GUI-thread stall; representative evidence uses three independent navigation rounds, records every >100 ms GUI event-processing sample, and treats a stall as repeatable only when it recurs in at least two rounds; OS scheduler delay is recorded separately and does not count as GUI-thread execution;
 - a 100k-example project opens without loading all example payloads;
 - import/hash/benchmark work cannot freeze the UI;
 - application remains navigable during a CPU-saturating worker job;

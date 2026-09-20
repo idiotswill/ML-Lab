@@ -1,4 +1,4 @@
-# v0.1.0-testing.2 Candidate / Testing Guide
+# v0.1.0-testing.3 Candidate / Testing Guide
 
 This guide belongs to the complete Phase 4 Windows candidate. The candidate is not `TESTING_READY` until the representative-machine gate passes and a testing-ready release manifest is produced.
 
@@ -6,8 +6,8 @@ This guide belongs to the complete Phase 4 Windows candidate. The candidate is n
 
 The retained Phase 4 candidate artifact contains:
 
-- `MLLab-Setup-v0.1.0-testing.2-x64.exe`;
-- `MLLab-v0.1.0-testing.2-windows-x64-portable.zip`;
+- `MLLab-Setup-v0.1.0-testing.3-x64.exe`;
+- `MLLab-v0.1.0-testing.3-windows-x64-portable.zip`;
 - candidate build/provenance manifest;
 - SHA-256 evidence for the standalone tree, installer and portable archive;
 - compiled performance-smoke evidence;
@@ -31,13 +31,15 @@ After installation, run:
 
 The helper runs the full physical-machine gate against the installed `MLLab.exe` and writes:
 
-`MLLab-v0.1.0-testing.2-representative-performance.json`
+`MLLab-v0.1.0-testing.3-representative-performance.json`
 
 next to the helper.
 
 A passing receipt is evidence only. It does not integrate anything into Frankenhomie and does not self-authorize the release.
 
 Preserve the JSON receipt unchanged for testing-ready promotion/review.
+
+Full physical mode runs three independent ordinary-navigation rounds. The 100 ms GUI-thread threshold is unchanged; the written "repeatable" gate fails when an over-threshold GUI stall recurs in at least two rounds. Scheduler delays are recorded separately and cannot be mislabeled as GUI-thread work.
 
 ## After testing-ready promotion
 

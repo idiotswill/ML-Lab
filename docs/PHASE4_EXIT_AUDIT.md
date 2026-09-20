@@ -61,7 +61,32 @@ The receipt passed startup, idle RAM, ordinary navigation, 100k bounded paging, 
 
 No threshold was weakened and no testing-ready manifest was produced. The failure led to a Data Studio fix that prepares the post-import view snapshot on the worker thread and applies cached view state on the GUI thread rather than re-querying dataset state during completion notification.
 
-The corrected binary is issued as `v0.1.0-testing.2` so the failed `testing.1` bytes remain unambiguous evidence.
+The corrected binary was issued as `v0.1.0-testing.2` so the failed `testing.1` bytes remain unambiguous evidence.
+
+## Preserved testing.2 physical non-promotion
+
+The second physical-machine candidate, `v0.1.0-testing.2` at source head `67f3e18ae16657bf2b41bed08b86cc165106e53c`, was also **not** promoted.
+
+Its full representative receipt is gate-evaluable, bound to executable SHA-256:
+
+`f9202e7f588342f167496cd0c5289fccfe801123043dc04b3118ff01bba7c8e4`
+
+and has receipt SHA-256:
+
+`369a8c5589cdcfe5a68cf3132b4116aac5fae04e346475a1b242c1deae050b30`
+
+The testing.1 regression was fixed: the 20,000-row background import completed with maximum navigation/event-processing time 83.11 ms and zero >100 ms import stalls. Startup, RAM, 100k bounded paging, worker-load navigation, cancellation, and all instrumentation checks also passed.
+
+Testing.2 recorded one 116.83 ms ordinary-navigation event-processing sample across 77 samples. The harness treated any single >100 ms observation as failure, but the binding `QUALITY_GATES.md` wording is "ordinary navigation/input shows no **repeatable** >100 ms GUI-thread stall." Because testing.2 did not capture independent repeatability rounds, it cannot be reinterpreted or promoted after the fact.
+
+Testing.3 corrects the evidence contract rather than lowering the threshold:
+- the GUI-thread threshold remains 100 ms;
+- ordinary navigation is measured in three independent rounds;
+- an over-threshold GUI event-processing stall is "repeatable" only when it recurs in at least two rounds;
+- raw isolated spikes remain recorded;
+- OS scheduler delay is recorded separately and is not mislabeled as GUI-thread execution;
+- background import and worker-load navigation retain strict zero >100 ms GUI-thread-stall checks;
+- the receipt schema is bumped to format version 2, and promotion rejects old-schema receipts.
 
 ## Performance evidence design
 
@@ -75,7 +100,7 @@ It invokes the installed candidate's full release-performance evidence mode. The
 - exercises 100,000 indexed examples;
 - verifies only a 100-row page is materialized;
 - exercises a 20,000-row background import;
-- samples ordinary navigation for >100 ms stalls;
+- samples three independent ordinary-navigation rounds for repeatable >100 ms GUI-thread stalls while preserving raw isolated spikes;
 - samples navigation while a real child worker performs CPU-heavy work;
 - observes cancellation acknowledgement and terminal cancellation;
 - measures process-start → visible interactive window;

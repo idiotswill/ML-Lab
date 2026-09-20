@@ -1,8 +1,8 @@
-# v0.1.0-testing.2 Release Notes
+# v0.1.0-testing.3 Release Notes
 
 Status: **candidate notes — testing-ready promotion pending representative physical-Windows performance evidence**
 
-`v0.1.0-testing.1` was not promoted: its real physical-Windows receipt correctly found one 132.31 ms GUI stall at background-import completion. `testing.2` moves the expensive Data Studio completion refresh off the GUI database path and preserves that failure as a regression.
+`v0.1.0-testing.1` was not promoted: its real physical-Windows receipt correctly found one 132.31 ms GUI stall at background-import completion. `testing.2` fixed that path: the same 20,000-row import completed with a maximum 83.11 ms navigation/event-processing sample and zero >100 ms import stalls. `testing.2` was also not promoted because the then-current harness treated one isolated 116.83 ms ordinary-navigation sample as a hard failure, while the written release gate requires no **repeatable** >100 ms GUI-thread stall. `testing.3` makes the evidence schema match that gate using three independent ordinary-navigation rounds while preserving the 100 ms threshold and recording scheduler delay separately.
 
 ## Scope
 

@@ -43,6 +43,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--phase-a-fixture-export-child",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--phase-a-provider-child",
         type=Path,
         help=argparse.SUPPRESS,
@@ -139,6 +144,10 @@ def main(argv: list[str] | None = None) -> int:
         from ml_lab.adapters.phase_a_reference import run_reference_preflight_child
 
         return run_reference_preflight_child(args.phase_a_preflight_child)
+    if args.phase_a_fixture_export_child:
+        from ml_lab.adapters.phase_a_fixture_export import run_phase_a_fixture_export_child
+
+        return run_phase_a_fixture_export_child(args.phase_a_fixture_export_child)
     if args.phase_a_provider_child:
         from ml_lab.adapters.phase_a_provider import run_local_provider_child
 

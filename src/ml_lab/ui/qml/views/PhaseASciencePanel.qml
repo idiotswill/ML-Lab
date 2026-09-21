@@ -99,6 +99,7 @@ Panel {
             }
 
             Repeater {
+                visible: !scienceController.developmentSplit
                 model: scienceController.baselineOptions
 
                 delegate: RowLayout {

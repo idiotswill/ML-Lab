@@ -225,6 +225,14 @@ def _validate_factory_receipt(
         raise ValueError("Factory receipt contains errors")
     if factory.get("target_contract") != "semantic-residual-v2":
         raise ValueError("Freeze requires semantic-residual-v2")
+    if _required_int(factory, "case_count") != _required_int(factory, "emitted_count"):
+        raise ValueError("Factory must emit every authored case before freeze")
+    for field in ("full_payload_leakage", "protected_language_leakage"):
+        report = factory.get(field)
+        if not isinstance(report, Mapping):
+            raise ValueError(f"{field} must be an object")
+        if report.get("blocking_count") != 0:
+            raise ValueError(f"{field} contains blocking leakage")
 
     claimed_payload = factory.get("payload_sha256")
     if not isinstance(claimed_payload, str) or len(claimed_payload) != 64:

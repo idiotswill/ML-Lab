@@ -1,0 +1,123 @@
+{
+  "schema": "ml-lab-phase-a-authoritative-fixture-seed/1",
+  "status": "PROTECTED_EVALUATION_ONLY",
+  "target_frankenhomie_commit": "1ff3e2155a3c2d2b316023e9933edf3a6d53697f",
+  "target_contract": "semantic-residual-v2",
+  "fixture_kind": "NON_CANON_FIXTURE",
+  "production_data": false,
+  "actor_id": "tester",
+  "audience": "TABLE",
+  "snapshot_revision": "phase-a-seed-scene-v1",
+  "facts": [
+    {
+      "key": "session.scene",
+      "value": "A non-canon workshop containing a Brass Hatch and a Stone Plinth.",
+      "source": "fixture:phase-a-seed",
+      "visibility": "TABLE"
+    },
+    {
+      "key": "campaign.entity.object.hatch",
+      "value": "Brass Hatch",
+      "source": "fixture:phase-a-seed",
+      "visibility": "TABLE"
+    },
+    {
+      "key": "campaign.entity.object.plinth",
+      "value": "Stone Plinth",
+      "source": "fixture:phase-a-seed",
+      "visibility": "TABLE"
+    },
+    {
+      "key": "campaign.entity.npc.hidden-observer",
+      "value": "Hidden Observer",
+      "source": "fixture:phase-a-seed",
+      "visibility": "GM_ONLY"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "seed-exact-inspect",
+      "split": "TEST",
+      "lineage_group": "seed/exact-inspect",
+      "declaration": "I inspect Brass Hatch.",
+      "expected_status": "TERMINATED_BEFORE_RESIDUAL",
+      "expected_route": "EXACT",
+      "expected_failed_deterministic_stage": null,
+      "expected_permitted_decisions": null,
+      "training_allowed": false,
+      "tags": ["deterministic", "exact", "search-inspect"]
+    },
+    {
+      "case_id": "seed-negated-open",
+      "split": "REDTEAM",
+      "lineage_group": "seed/negated-open",
+      "declaration": "I do not open Brass Hatch.",
+      "expected_status": "TERMINATED_BEFORE_RESIDUAL",
+      "expected_route": "NO_ACTION",
+      "expected_failed_deterministic_stage": null,
+      "expected_permitted_decisions": null,
+      "training_allowed": false,
+      "tags": ["zero-model", "negation", "commitment-veto"]
+    },
+    {
+      "case_id": "seed-question-inspect",
+      "split": "REDTEAM",
+      "lineage_group": "seed/question-inspect",
+      "declaration": "Should I inspect Brass Hatch?",
+      "expected_status": "TERMINATED_BEFORE_RESIDUAL",
+      "expected_route": "NO_ACTION",
+      "expected_failed_deterministic_stage": null,
+      "expected_permitted_decisions": null,
+      "training_allowed": false,
+      "tags": ["zero-model", "question", "commitment-veto"]
+    },
+    {
+      "case_id": "seed-cancelled-inspect",
+      "split": "REDTEAM",
+      "lineage_group": "seed/cancelled-inspect",
+      "declaration": "Never mind, I inspect Brass Hatch.",
+      "expected_status": "TERMINATED_BEFORE_RESIDUAL",
+      "expected_route": "NO_ACTION",
+      "expected_failed_deterministic_stage": null,
+      "expected_permitted_decisions": null,
+      "training_allowed": false,
+      "tags": ["zero-model", "cancellation", "commitment-veto"]
+    },
+    {
+      "case_id": "seed-unfamiliar-scrutinize",
+      "split": "TEST",
+      "lineage_group": "seed/unfamiliar-scrutinize",
+      "declaration": "I scrutinize Brass Hatch for scratches.",
+      "expected_status": "RESIDUAL_EXPORTED",
+      "expected_route": "SEMANTIC_REQUIRED",
+      "expected_failed_deterministic_stage": "COMMITMENT:UNRESOLVED_DECLARATION",
+      "expected_permitted_decisions": ["RESOLVE", "ASK_PLAYER"],
+      "training_allowed": false,
+      "tags": ["residual", "unfamiliar-wording", "search-inspect"]
+    },
+    {
+      "case_id": "seed-ambiguous-pronoun",
+      "split": "TEST",
+      "lineage_group": "seed/ambiguous-pronoun",
+      "declaration": "I inspect it.",
+      "expected_status": "RESIDUAL_EXPORTED",
+      "expected_route": "SEMANTIC_REQUIRED",
+      "expected_failed_deterministic_stage": "IDENTITY:REFERENCE_NOT_UNIQUE",
+      "expected_permitted_decisions": ["RESOLVE", "ASK_PLAYER"],
+      "training_allowed": false,
+      "tags": ["residual", "identity", "ambiguous-reference"]
+    },
+    {
+      "case_id": "seed-compound-inspect-open",
+      "split": "REDTEAM",
+      "lineage_group": "seed/compound-inspect-open",
+      "declaration": "I inspect Brass Hatch and open Brass Hatch.",
+      "expected_status": "RESIDUAL_EXPORTED",
+      "expected_route": "SEMANTIC_REQUIRED",
+      "expected_failed_deterministic_stage": "COMMITMENT:MULTIPLE_COMMITTED_ACTIONS",
+      "expected_permitted_decisions": ["ASK_PLAYER"],
+      "training_allowed": false,
+      "tags": ["residual", "compound", "ask-only", "future-multi-action-evidence"]
+    }
+  ]
+}

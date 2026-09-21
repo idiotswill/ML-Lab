@@ -369,7 +369,7 @@ def _cached_reference_validation(
         canonical_json(proposal).encode("utf-8")
     ).hexdigest()
     validation_key = hashlib.sha256(
-        f"{target_commit}:{request_sha}:{proposal_sha}".encode("utf-8")
+        f"{target_commit}:{request_sha}:{proposal_sha}".encode()
     ).hexdigest()
     cache_path = (
         cache_root / "reference" / f"{validation_key}.json"

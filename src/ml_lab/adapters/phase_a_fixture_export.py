@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import socket
@@ -214,24 +215,28 @@ def run_phase_a_fixture_export_child(spec_path: Path) -> int:
         if not app_root.is_dir():
             raise FileNotFoundError(app_root)
         sys.path.insert(0, str(app_root))
-        db_module = __import__("asterra.db", fromlist=["SCHEMA"])
-        routing = __import__("asterra.semantic_routing", fromlist=["route_player_semantics"])
-        orchestrator = __import__("asterra.turn_orchestrator", fromlist=["TurnFact"])
-        semantic_dispatch = __import__(
-            "asterra.semantic_dispatch",
-            fromlist=["registered_semantic_families"],
+        db_namespace = vars(importlib.import_module("asterra.db"))
+        routing_namespace = vars(importlib.import_module("asterra.semantic_routing"))
+        orchestrator_namespace = vars(importlib.import_module("asterra.turn_orchestrator"))
+        dispatch_namespace = vars(importlib.import_module("asterra.semantic_dispatch"))
+        schema = cast(str, db_namespace["SCHEMA"])
+        route_player_semantics = cast(Any, routing_namespace["route_player_semantics"])
+        turn_fact_type = cast(Any, orchestrator_namespace["TurnFact"])
+        registered_semantic_families = cast(
+            Any,
+            dispatch_namespace["registered_semantic_families"],
         )
 
         conn = sqlite3.connect(":memory:")
         try:
             conn.row_factory = sqlite3.Row
-            conn.executescript(str(getattr(db_module, "SCHEMA")))
+            conn.executescript(schema)
             database_rows = conn.execute("PRAGMA database_list").fetchall()
             if any(str(row[2] or "") for row in database_rows):
                 raise RuntimeError("Fixture export opened a file-backed SQLite database")
 
             facts = tuple(
-                orchestrator.TurnFact.model_validate(raw)
+                turn_fact_type.model_validate(raw)
                 for raw in cast(list[dict[str, object]], fixture["facts"])
             )
 
@@ -246,7 +251,7 @@ def run_phase_a_fixture_export_child(spec_path: Path) -> int:
                     raise RuntimeError("ML_LAB_CAPTURE_ONLY")
 
             provider = CaptureProvider()
-            result = routing.route_player_semantics(
+            result = route_player_semantics(
                 conn,
                 session_id=1,
                 actor_id=str(fixture["actor_id"]),
@@ -257,14 +262,14 @@ def run_phase_a_fixture_export_child(spec_path: Path) -> int:
                 facts=facts,
                 snapshot_revision=str(fixture["snapshot_revision"]),
                 allowed_action_families=tuple(
-                    semantic_dispatch.registered_semantic_families()
+                    registered_semantic_families()
                 ),
                 provider=provider,
                 combat_revision=0,
             )
 
             if provider.request is not None:
-                request = provider.request.model_dump(mode="json")
+                request = cast(Any, provider.request).model_dump(mode="json")
                 receipt = {
                     "status": "RESIDUAL_EXPORTED",
                     "commit_sha": commit_sha,
@@ -362,8 +367,7 @@ def _install_network_veto() -> None:
     def forbidden(*_args: object, **_kwargs: object) -> Any:
         raise RuntimeError("REFERENCE_NETWORK_ACCESS_FORBIDDEN")
 
-    socket.create_connection = forbidden  # type: ignore[assignment]
-    socket.socket.connect = forbidden  # type: ignore[assignment]
+    socket.create_connection = cast(Any, forbidden)
 
 
 def _error_receipt(

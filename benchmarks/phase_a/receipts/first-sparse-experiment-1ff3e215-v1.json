@@ -1,0 +1,52 @@
+{
+  "schema": "ml-lab-phase-a-experiment-evidence/1",
+  "status": "PRESERVED_EXPERIMENT_RESULT",
+  "stage": "EXPERIMENT",
+  "target_frankenhomie_commit": "1ff3e2155a3c2d2b316023e9933edf3a6d53697f",
+  "target_contract": "semantic-residual-v2",
+  "freeze_receipt_payload_sha256": "c4bbc4cb64f39ca7568d93d5f9e695b54e21ab3363d43f5e5b093790648f22ef",
+  "experiment_receipt_payload_sha256": "a4eab56953e2194802a89c08c5ba6072943224b55902b8ae4ced8d97565ad640",
+  "trainer_id": "builtin.phase_a_sparse.v1",
+  "model": {
+    "kind": "phase-a-bounded-sparse-v1",
+    "sha256": "29969e2a6e3ea584d7fdaa903ef4f734980802ac38c28d60f849ae05ce2bf7b2",
+    "size_bytes": 24987
+  },
+  "training": {
+    "train_artifact_digest": "da524b5c911b69dd2cf726858a5556f327ae682233701ed55e55e337799edbaa",
+    "dev_used": false,
+    "test_used": false,
+    "redteam_used": false
+  },
+  "dev": {
+    "total": 6,
+    "correct": 0,
+    "failures": 6,
+    "veto_failures": 0,
+    "resolution_precision": null,
+    "useful_resolution_coverage": 0.0,
+    "ask_player_accuracy": 0.0,
+    "decision_accuracy": 0.3333333333333333,
+    "family_slot_accuracy": 0.0,
+    "false_commitments": 0,
+    "contract_failures": 0,
+    "zero_model_route_violations": 0,
+    "hidden_or_out_of_envelope": 0,
+    "unsupported_mechanics_authority": 0,
+    "mean_latency_ms": 1453.5756999994192,
+    "p95_latency_ms": 1795.438400000421,
+    "failure_cases": [
+      "dev-ask-compound-move-search",
+      "dev-ask-npc-pronoun",
+      "dev-move-make-for-landing",
+      "dev-open-nudge-shutter",
+      "dev-search-assess-pedestal",
+      "dev-speech-parley-curator"
+    ],
+    "failure_kind": "SEMANTIC_MISMATCH",
+    "failure_severity": "NON_VETO"
+  },
+  "interpretation": "The first bounded sparse scorer is safe but has zero useful DEV coverage. Concrete TRAIN entity-key slot classes do not transfer to novel bounded DEV entity keys.",
+  "promotion_allowed": false,
+  "integration_gate": "NO_GO"
+}

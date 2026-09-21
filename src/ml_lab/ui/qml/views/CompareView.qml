@@ -25,10 +25,21 @@ Item {
                 }
 
                 Text {
-                    text: "Protected evaluation evidence · immutable cases · failure drilldown"
+                    text: appController.compare.developmentSplit ?
+                              "DEV development evidence · immutable cases · failure drilldown" :
+                              "Protected evaluation evidence · immutable cases · failure drilldown"
                     color: Theme.muted
                     font.pixelSize: 12
                 }
+            }
+
+            LabButton {
+                visible: appController.selectedProject.adapter_id === "frankenhomie.phase-a-residual"
+                text: "DEV"
+                checkable: true
+                checked: appController.compare.split === "DEV"
+                enabled: !appController.compare.busy
+                onClicked: appController.compare.setSplit("DEV")
             }
 
             LabButton {

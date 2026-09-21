@@ -643,7 +643,7 @@ def _zero_model_cases(
     scene_ids = _scene_ids(split, scenes)
     rows = []
     per_category = count // len(categories)
-    for category_index, category in enumerate(categories):
+    for category in categories:
         for variant in range(per_category):
             scene_id = scene_ids[variant % len(scene_ids)]
             details = _mapping(scenes[scene_id], "details")

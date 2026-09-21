@@ -221,6 +221,9 @@ def run_phase_a_fixture_export_child(spec_path: Path) -> int:
         orchestrator_namespace = vars(importlib.import_module("asterra.turn_orchestrator"))
         dispatch_namespace = vars(importlib.import_module("asterra.semantic_dispatch"))
         schema = cast(str, db_namespace["SCHEMA"])
+        execute_sql_script = cast(Any, db_namespace["_execute_sql_script"])
+        legacy_migrate = cast(Any, db_namespace["_legacy_migrate"])
+        run_migrations = cast(Any, db_namespace["_run_migrations"])
         route_player_semantics = cast(Any, routing_namespace["route_player_semantics"])
         turn_fact_type = cast(Any, orchestrator_namespace["TurnFact"])
         registered_semantic_families = cast(
@@ -231,7 +234,9 @@ def run_phase_a_fixture_export_child(spec_path: Path) -> int:
         conn = sqlite3.connect(":memory:")
         try:
             conn.row_factory = sqlite3.Row
-            conn.executescript(schema)
+            execute_sql_script(conn, schema)
+            legacy_migrate(conn)
+            run_migrations(conn)
             database_rows = conn.execute("PRAGMA database_list").fetchall()
             if any(str(row[2] or "") for row in database_rows):
                 raise RuntimeError("Fixture export opened a file-backed SQLite database")

@@ -13,7 +13,6 @@ from ml_lab.datasets.leakage import canonical_json
 from ml_lab.datasets.service import DatasetService
 from ml_lab.storage.workspace import Workspace
 
-
 EXPANDED_FREEZE_RECEIPT = "phase-a-expanded-freeze-receipt.json"
 
 

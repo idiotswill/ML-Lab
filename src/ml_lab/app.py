@@ -153,6 +153,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--phase-a-expanded-bounded-provider-signal",
+        type=Path,
+        help=(
+            "Run the bounded provider semantic-signal diagnostic on DEV only "
+            "in this expanded frozen workspace."
+        ),
+    )
+    parser.add_argument(
         "--phase-a-provider-model",
         default="qwen3.5:4b-q4_K_M",
         help=argparse.SUPPRESS,
@@ -468,6 +476,33 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 23
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    if args.phase_a_expanded_bounded_provider_signal:
+        from ml_lab.adapters.phase_a_expanded_bounded_signal import (
+            run_expanded_phase_a_bounded_provider_signal,
+        )
+
+        try:
+            result = run_expanded_phase_a_bounded_provider_signal(
+                workspace_path=args.phase_a_expanded_bounded_provider_signal,
+                model=args.phase_a_provider_model,
+                endpoint=args.phase_a_provider_endpoint,
+                timeout_seconds=args.phase_a_provider_timeout,
+            )
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "integration_gate": "NO_GO",
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+            return 33
         print(json.dumps(result, sort_keys=True))
         return 0
     if args.phase_a_expanded_dev_provider:

@@ -13,6 +13,17 @@ from ml_lab.datasets.leakage import canonical_json
 from ml_lab.storage.workspace import Workspace
 
 _APP_ROOT = "frankenhomie-asterra-v0.9.0"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_PHASE_A_FIXTURE_RECEIPT = (
+    _REPO_ROOT
+    / "benchmarks"
+    / "phase_a"
+    / "receipts"
+    / "fixture-evidence-1ff3e215-v1.json"
+)
+DEFAULT_PHASE_A_FIXTURE_LABELS = (
+    _REPO_ROOT / "benchmarks" / "phase_a" / "fixture_labels_v1.json"
+)
 
 
 @dataclass(frozen=True, slots=True)

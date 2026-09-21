@@ -1,0 +1,90 @@
+{
+  "schema": "ml-lab-phase-a-synthetic-seed/1",
+  "status": "SYNTHETIC_NON_CANON",
+  "target_frankenhomie_commit": "1ff3e2155a3c2d2b316023e9933edf3a6d53697f",
+  "target_contract": "semantic-residual-v2",
+  "production_data": false,
+  "transcript_derived": false,
+  "actor_id": "tester",
+  "audience": "TABLE",
+  "scenes": {
+    "workshop": {
+      "snapshot_revision": "phase-a-train-workshop-v1",
+      "facts": [
+        {"key":"session.scene","value":"A non-canon workshop with a Brass Hatch, Stone Plinth, East Passage, Gatekeeper, and Archivist.","source":"fixture:phase-a-train","visibility":"TABLE"},
+        {"key":"campaign.entity.object.hatch","value":"Brass Hatch","source":"fixture:phase-a-train","visibility":"TABLE"},
+        {"key":"campaign.entity.object.plinth","value":"Stone Plinth","source":"fixture:phase-a-train","visibility":"TABLE"},
+        {"key":"campaign.entity.location.east-passage","value":"East Passage","source":"fixture:phase-a-train","visibility":"TABLE"},
+        {"key":"campaign.entity.npc.gatekeeper","value":"Gatekeeper","source":"fixture:phase-a-train","visibility":"TABLE"},
+        {"key":"campaign.entity.npc.archivist","value":"Archivist","source":"fixture:phase-a-train","visibility":"TABLE"}
+      ]
+    },
+    "gallery": {
+      "snapshot_revision": "phase-a-dev-gallery-v1",
+      "facts": [
+        {"key":"session.scene","value":"A non-canon gallery with an Iron Shutter, Marble Pedestal, West Landing, Curator, and Porter.","source":"fixture:phase-a-dev","visibility":"TABLE"},
+        {"key":"campaign.entity.object.shutter","value":"Iron Shutter","source":"fixture:phase-a-dev","visibility":"TABLE"},
+        {"key":"campaign.entity.object.pedestal","value":"Marble Pedestal","source":"fixture:phase-a-dev","visibility":"TABLE"},
+        {"key":"campaign.entity.location.west-landing","value":"West Landing","source":"fixture:phase-a-dev","visibility":"TABLE"},
+        {"key":"campaign.entity.npc.curator","value":"Curator","source":"fixture:phase-a-dev","visibility":"TABLE"},
+        {"key":"campaign.entity.npc.porter","value":"Porter","source":"fixture:phase-a-dev","visibility":"TABLE"}
+      ]
+    }
+  },
+  "cases": [
+    {
+      "case_id":"train-search-appraise-hatch","split":"TRAIN","scene_id":"workshop","lineage_group":"train/search-appraise","declaration":"I appraise Brass Hatch for wear.","expected":{"decision":"RESOLVE","action_family":"SEARCH_INSPECT","slots":[{"name":"SUBJECT","value":"object:hatch"}]},"tags":["synthetic","search-inspect","unfamiliar-wording"]
+    },
+    {
+      "case_id":"train-search-pore-plinth","split":"TRAIN","scene_id":"workshop","lineage_group":"train/search-pore","declaration":"I pore over Stone Plinth.","expected":{"decision":"RESOLVE","action_family":"SEARCH_INSPECT","slots":[{"name":"SUBJECT","value":"object:plinth"}]},"tags":["synthetic","search-inspect","unfamiliar-wording"]
+    },
+    {
+      "case_id":"train-search-survey-hatch","split":"TRAIN","scene_id":"workshop","lineage_group":"train/search-survey","declaration":"I survey Brass Hatch closely.","expected":{"decision":"RESOLVE","action_family":"SEARCH_INSPECT","slots":[{"name":"SUBJECT","value":"object:hatch"}]},"tags":["synthetic","search-inspect","unfamiliar-wording"]
+    },
+    {
+      "case_id":"train-open-swing-hatch","split":"TRAIN","scene_id":"workshop","lineage_group":"train/interact-swing-open","declaration":"I swing Brass Hatch ajar.","expected":{"decision":"RESOLVE","action_family":"INTERACT_OBJECT","slots":[{"name":"OBJECT","value":"object:hatch"},{"name":"OPERATION","value":"OPEN"}]},"tags":["synthetic","interact-object","open","unfamiliar-wording"]
+    },
+    {
+      "case_id":"train-close-ease-hatch","split":"TRAIN","scene_id":"workshop","lineage_group":"train/interact-ease-close","declaration":"I ease Brass Hatch shut.","expected":{"decision":"RESOLVE","action_family":"INTERACT_OBJECT","slots":[{"name":"OBJECT","value":"object:hatch"},{"name":"OPERATION","value":"CLOSE"}]},"tags":["synthetic","interact-object","close","unfamiliar-wording"]
+    },
+    {
+      "case_id":"train-move-trek-east","split":"TRAIN","scene_id":"workshop","lineage_group":"train/move-trek","declaration":"I trek to East Passage.","expected":{"decision":"RESOLVE","action_family":"MOVE_TRAVEL","slots":[{"name":"DESTINATION","value":"location:east-passage"}]},"tags":["synthetic","move-travel","unfamiliar-wording"]
+    },
+    {
+      "case_id":"train-move-wander-east","split":"TRAIN","scene_id":"workshop","lineage_group":"train/move-wander","declaration":"I wander toward East Passage.","expected":{"decision":"RESOLVE","action_family":"MOVE_TRAVEL","slots":[{"name":"DESTINATION","value":"location:east-passage"}]},"tags":["synthetic","move-travel","unfamiliar-wording"]
+    },
+    {
+      "case_id":"train-speech-address-gatekeeper","split":"TRAIN","scene_id":"workshop","lineage_group":"train/speech-address","declaration":"I address Gatekeeper.","expected":{"decision":"RESOLVE","action_family":"SPEECH_ONLY","slots":[{"name":"ADDRESSEE","value":"npc:gatekeeper"}]},"tags":["synthetic","speech-only","unfamiliar-wording"]
+    },
+    {
+      "case_id":"train-speech-confer-archivist","split":"TRAIN","scene_id":"workshop","lineage_group":"train/speech-confer","declaration":"I confer with Archivist.","expected":{"decision":"RESOLVE","action_family":"SPEECH_ONLY","slots":[{"name":"ADDRESSEE","value":"npc:archivist"}]},"tags":["synthetic","speech-only","unfamiliar-wording"]
+    },
+    {
+      "case_id":"train-ask-object-pronoun","split":"TRAIN","scene_id":"workshop","lineage_group":"train/ask-object-pronoun","declaration":"I inspect that one.","expected":{"decision":"ASK_PLAYER","action_family":"SEARCH_INSPECT","slots":[],"missing_slots":["SUBJECT"],"question":"Which visible subject do you mean?","candidate_keys":["object:hatch","object:plinth"]},"tags":["synthetic","ask-player","ambiguous-reference"]
+    },
+    {
+      "case_id":"train-ask-npc-pronoun","split":"TRAIN","scene_id":"workshop","lineage_group":"train/ask-npc-pronoun","declaration":"I tell them hello.","expected":{"decision":"ASK_PLAYER","action_family":"SPEECH_ONLY","slots":[],"missing_slots":["ADDRESSEE"],"question":"Who are you speaking to?","candidate_keys":["npc:archivist","npc:gatekeeper"]},"tags":["synthetic","ask-player","ambiguous-reference"]
+    },
+    {
+      "case_id":"train-ask-compound-search-speech","split":"TRAIN","scene_id":"workshop","lineage_group":"train/ask-compound-a","declaration":"I search Stone Plinth and tell Gatekeeper hello.","expected":{"decision":"ASK_PLAYER","action_family":null,"slots":[],"missing_slots":["PRIMARY_ACTION"],"question":"Which action do you want to take first?","candidate_keys":[]},"tags":["synthetic","ask-player","compound"]
+    },
+    {
+      "case_id":"dev-search-assess-pedestal","split":"DEV","scene_id":"gallery","lineage_group":"dev/search-assess","declaration":"I assess Marble Pedestal for damage.","expected":{"decision":"RESOLVE","action_family":"SEARCH_INSPECT","slots":[{"name":"SUBJECT","value":"object:pedestal"}]},"tags":["synthetic","search-inspect","unfamiliar-wording"]
+    },
+    {
+      "case_id":"dev-open-nudge-shutter","split":"DEV","scene_id":"gallery","lineage_group":"dev/interact-nudge-open","declaration":"I nudge Iron Shutter ajar.","expected":{"decision":"RESOLVE","action_family":"INTERACT_OBJECT","slots":[{"name":"OBJECT","value":"object:shutter"},{"name":"OPERATION","value":"OPEN"}]},"tags":["synthetic","interact-object","open","unfamiliar-wording"]
+    },
+    {
+      "case_id":"dev-move-make-for-landing","split":"DEV","scene_id":"gallery","lineage_group":"dev/move-make-for","declaration":"I make for West Landing.","expected":{"decision":"RESOLVE","action_family":"MOVE_TRAVEL","slots":[{"name":"DESTINATION","value":"location:west-landing"}]},"tags":["synthetic","move-travel","unfamiliar-wording"]
+    },
+    {
+      "case_id":"dev-speech-parley-curator","split":"DEV","scene_id":"gallery","lineage_group":"dev/speech-parley","declaration":"I parley with Curator.","expected":{"decision":"RESOLVE","action_family":"SPEECH_ONLY","slots":[{"name":"ADDRESSEE","value":"npc:curator"}]},"tags":["synthetic","speech-only","unfamiliar-wording"]
+    },
+    {
+      "case_id":"dev-ask-npc-pronoun","split":"DEV","scene_id":"gallery","lineage_group":"dev/ask-npc-pronoun","declaration":"I greet them politely.","expected":{"decision":"ASK_PLAYER","action_family":"SPEECH_ONLY","slots":[],"missing_slots":["ADDRESSEE"],"question":"Who are you speaking to?","candidate_keys":["npc:curator","npc:porter"]},"tags":["synthetic","ask-player","ambiguous-reference"]
+    },
+    {
+      "case_id":"dev-ask-compound-move-search","split":"DEV","scene_id":"gallery","lineage_group":"dev/ask-compound-b","declaration":"I walk to West Landing and inspect Iron Shutter.","expected":{"decision":"ASK_PLAYER","action_family":null,"slots":[],"missing_slots":["PRIMARY_ACTION"],"question":"Which action do you want to take first?","candidate_keys":[]},"tags":["synthetic","ask-player","compound"]
+    }
+  ]
+}

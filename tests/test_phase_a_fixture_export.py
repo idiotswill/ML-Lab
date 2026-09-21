@@ -20,6 +20,11 @@ class TurnFact:
         return dict(raw)
 """
 
+_FAKE_SEMANTIC_DISPATCH = """
+def registered_semantic_families():
+    return ("SEARCH_INSPECT",)
+"""
+
 _FAKE_ROUTING = """
 class FakeRequest:
     def __init__(self, declaration):
@@ -97,6 +102,7 @@ def _fake_repo(tmp_path: Path) -> tuple[Path, str]:
     (package / "db.py").write_text(_FAKE_DB, encoding="utf-8")
     (package / "semantic_routing.py").write_text(_FAKE_ROUTING, encoding="utf-8")
     (package / "semantic_residual.py").write_text("# materialization marker\n", encoding="utf-8")
+    (package / "semantic_dispatch.py").write_text(_FAKE_SEMANTIC_DISPATCH, encoding="utf-8")
     (package / "turn_orchestrator.py").write_text(_FAKE_TURN_ORCHESTRATOR, encoding="utf-8")
     (data / "semantic_family_registry.json").write_text("{}\n", encoding="utf-8")
     _git(repo, "init")
@@ -116,7 +122,6 @@ def _fixture(declaration: str) -> dict[str, object]:
         "actor_id": "tester",
         "audience": "TABLE",
         "snapshot_revision": "fixture-revision-1",
-        "allowed_action_families": ["SEARCH_INSPECT"],
         "facts": [
             {
                 "key": "session.scene",

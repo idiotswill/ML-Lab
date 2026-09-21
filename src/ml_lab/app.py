@@ -145,6 +145,30 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--phase-a-expanded-dev-provider",
+        type=Path,
+        help=(
+            "Run the pinned local-provider baseline on DEV only in this "
+            "expanded frozen workspace."
+        ),
+    )
+    parser.add_argument(
+        "--phase-a-provider-model",
+        default="qwen3.5:4b-q4_K_M",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--phase-a-provider-endpoint",
+        default="http://127.0.0.1:11434/v1/chat/completions",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--phase-a-provider-timeout",
+        type=float,
+        default=120.0,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--phase-a-generate-corpus",
         type=Path,
         help="Generate the expanded Phase A synthetic corpus into this directory.",
@@ -444,6 +468,33 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 23
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    if args.phase_a_expanded_dev_provider:
+        from ml_lab.adapters.phase_a_expanded_dev_provider import (
+            run_expanded_phase_a_dev_provider,
+        )
+
+        try:
+            result = run_expanded_phase_a_dev_provider(
+                workspace_path=args.phase_a_expanded_dev_provider,
+                model=args.phase_a_provider_model,
+                endpoint=args.phase_a_provider_endpoint,
+                timeout_seconds=args.phase_a_provider_timeout,
+            )
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "integration_gate": "NO_GO",
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+            return 32
         print(json.dumps(result, sort_keys=True))
         return 0
     if args.phase_a_expanded_dev_bakeoff:

@@ -48,7 +48,7 @@
       "case_id":"train-close-ease-hatch","split":"TRAIN","scene_id":"workshop","lineage_group":"train/interact-ease-close","declaration":"I ease Brass Hatch shut.","expected":{"decision":"RESOLVE","action_family":"INTERACT_OBJECT","slots":[{"name":"OBJECT","value":"object:hatch"},{"name":"OPERATION","value":"CLOSE"}]},"tags":["synthetic","interact-object","close","unfamiliar-wording"]
     },
     {
-      "case_id":"train-move-trek-east","split":"TRAIN","scene_id":"workshop","lineage_group":"train/move-trek","declaration":"I trek to East Passage.","expected":{"decision":"RESOLVE","action_family":"MOVE_TRAVEL","slots":[{"name":"DESTINATION","value":"location:east-passage"}]},"tags":["synthetic","move-travel","unfamiliar-wording"]
+      "case_id":"train-move-stride-east","split":"TRAIN","scene_id":"workshop","lineage_group":"train/move-stride","declaration":"I stride eastward toward East Passage.","expected":{"decision":"RESOLVE","action_family":"MOVE_TRAVEL","slots":[{"name":"DESTINATION","value":"location:east-passage"}]},"tags":["synthetic","move-travel","unfamiliar-wording"]
     },
     {
       "case_id":"train-move-wander-east","split":"TRAIN","scene_id":"workshop","lineage_group":"train/move-wander","declaration":"I wander toward East Passage.","expected":{"decision":"RESOLVE","action_family":"MOVE_TRAVEL","slots":[{"name":"DESTINATION","value":"location:east-passage"}]},"tags":["synthetic","move-travel","unfamiliar-wording"]

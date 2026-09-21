@@ -1058,10 +1058,10 @@ def _assert_residual_phrase_shape(
     phrase: str,
     normalized: str,
 ) -> None:
-    lexical = re.sub(r"\\{[a-z_]+\\}", "entity", normalized)
-    lexical = re.sub(r"\\s+", " ", lexical).strip()
+    lexical = re.sub(r"\{[a-z_]+\}", "entity", normalized)
+    lexical = re.sub(r"\s+", " ", lexical).strip()
     if re.match(
-        r"^[a-z]+(?:\\s+[a-z]+ly)?\\s+(?:to|that|whether|if|[a-z]+ing)\\b",
+        r"^[a-z]+(?:\s+[a-z]+ly)?\s+(?:to|that|whether|if|[a-z]+ing)\b",
         lexical,
     ):
         raise ValueError(

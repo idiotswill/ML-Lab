@@ -15,8 +15,13 @@ from ml_lab.datasets.service import DatasetService, ValidatedExampleInput
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.jobs.protocol import JobSpec
 from ml_lab.storage.workspace import Workspace
+from ml_lab.trainers.phase_a_candidate_sparse import (
+    PhaseACandidateSparseModel,
+    predict_phase_a_candidate_sparse,
+)
 from ml_lab.trainers.phase_a_sparse import PhaseASparseModel, predict_phase_a_sparse
 from ml_lab.trainers.service import (
+    PHASE_A_CANDIDATE_TRAINER_ID,
     PHASE_A_RUNTIME_PACK_ID,
     PHASE_A_TRAINER_ID,
     SPARSE_RUNTIME_PACK_ID,
@@ -79,6 +84,7 @@ def _git(repo: Path, *args: str) -> str:
 
 
 def _phase_a_request(declaration: str, target: str) -> dict[str, object]:
+    name = target.split(":", 1)[-1].replace("-", " ").title()
     return {
         "version": PHASE_A_CONTRACT_VERSION,
         "failed_deterministic_stage": "IDENTITY:AMBIGUOUS",
@@ -86,6 +92,17 @@ def _phase_a_request(declaration: str, target: str) -> dict[str, object]:
             "route": "SEMANTIC_REQUIRED",
             "model_required_because": "IDENTITY:AMBIGUOUS",
             "declaration": declaration,
+        },
+        "context": {
+            "candidates": [
+                {
+                    "entity_key": target,
+                    "name": name,
+                    "aliases": [],
+                    "source_fact_keys": [f"campaign.entity.{target}"],
+                    "focus_rank": None,
+                }
+            ]
         },
         "permitted_decisions": ["RESOLVE", "ASK_PLAYER"],
         "allowed_action_families": ["HARM_TARGET"],
@@ -120,7 +137,11 @@ def _phase_a_resolve(target: str) -> dict[str, object]:
     }
 
 
-def _phase_a_training_experiment(tmp_path: Path) -> tuple[Workspace, str, dict[str, object]]:
+def _phase_a_training_experiment(
+    tmp_path: Path,
+    *,
+    trainer_id: str = PHASE_A_TRAINER_ID,
+) -> tuple[Workspace, str, dict[str, object]]:
     repo = tmp_path / "contract-repo"
     repo.mkdir()
     (repo / "contract.txt").write_text("phase-a-contract\n", encoding="utf-8")
@@ -184,7 +205,7 @@ def _phase_a_training_experiment(tmp_path: Path) -> tuple[Workspace, str, dict[s
     experiment = ExperimentService(workspace).create(
         project_id=project.id,
         dataset_id=dataset.id,
-        trainer_id=PHASE_A_TRAINER_ID,
+        trainer_id=trainer_id,
         runtime_pack_id=PHASE_A_RUNTIME_PACK_ID,
         config={"feature_dim": 1024, "alpha": 0.5},
         seed=17,
@@ -199,11 +220,14 @@ def test_training_options_expose_only_packaged_adapter_compatible_workers() -> N
     assert generic[0].runtime_pack_id == SPARSE_RUNTIME_PACK_ID
 
     phase_a = training_options(PHASE_A_ADAPTER_ID)
-    assert [option.trainer_id for option in phase_a] == [PHASE_A_TRAINER_ID]
-    assert phase_a[0].runtime_pack_id == PHASE_A_RUNTIME_PACK_ID
-    assert phase_a[0].uses_payload_keys is False
+    assert [option.trainer_id for option in phase_a] == [
+        PHASE_A_TRAINER_ID,
+        PHASE_A_CANDIDATE_TRAINER_ID,
+    ]
+    assert all(option.runtime_pack_id == PHASE_A_RUNTIME_PACK_ID for option in phase_a)
+    assert all(option.uses_payload_keys is False for option in phase_a)
     assert generic[0].reproducibility_mode == "DETERMINISTIC"
-    assert phase_a[0].reproducibility_mode == "DETERMINISTIC"
+    assert all(option.reproducibility_mode == "DETERMINISTIC" for option in phase_a)
     assert packaged_reproducibility(
         SPARSE_TRAINER_ID,
         SPARSE_RUNTIME_PACK_ID,
@@ -319,6 +343,47 @@ def test_phase_a_training_worker_is_train_only_and_produces_bounded_model(
         proposal = predict_phase_a_sparse(model, train_request)
         assert proposal["decision"] == "RESOLVE"
         assert PhaseAResidualAdapter().validate_proposal(train_request, proposal).accepted
+    finally:
+        service.shutdown()
+
+
+def test_phase_a_candidate_training_worker_is_train_only_and_rebinds_current_candidate(
+    tmp_path: Path,
+) -> None:
+    workspace, experiment_id, _train_request = _phase_a_training_experiment(
+        tmp_path,
+        trainer_id=PHASE_A_CANDIDATE_TRAINER_ID,
+    )
+    service = TrainingService(workspace)
+    try:
+        launched = service.launch(experiment_id)
+        spec = JobSpec.read(launched.job.staging_dir / "job_spec.json")
+        staged = spec.payload["staged_inputs"]
+        assert isinstance(staged, dict)
+        assert set(staged) == {"train.jsonl"}
+        assert spec.task_type == "trainer.phase_a_candidate_sparse.v1"
+
+        state = _wait_for_training(service, experiment_id, launched.job.id)
+        assert state.job.status is JobStatus.COMPLETED
+        assert state.experiment.status is ExperimentStatus.COMPLETED
+        assert state.experiment.model_artifact_digest is not None
+        model = PhaseACandidateSparseModel.load(
+            workspace.artifacts.resolve(state.experiment.model_artifact_digest)
+        )
+        current_request = _phase_a_request(
+            "I clobber Guard",
+            "combatant:guard",
+        )
+        proposal = predict_phase_a_candidate_sparse(model, current_request)
+        assert proposal["decision"] == "RESOLVE"
+        assert proposal["slots"] == [
+            {"name": "TARGET_COMBATANT", "value": "combatant:guard"}
+        ]
+        assert "combatant:mara" not in str(proposal)
+        assert PhaseAResidualAdapter().validate_proposal(
+            current_request,
+            proposal,
+        ).accepted
     finally:
         service.shutdown()
 

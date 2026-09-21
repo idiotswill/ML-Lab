@@ -284,6 +284,190 @@ def run_phase_a_dataset_factory(
     return factory_receipt
 
 
+def _cached_export(
+    *,
+    exporter: PhaseAFixtureExporter,
+    repository: Path,
+    target_commit: str,
+    fixture: Mapping[str, object],
+    cache_root: Path | None,
+) -> tuple[PhaseAFixtureExportReceipt, bool]:
+    input_sha = hashlib.sha256(
+        canonical_json(fixture).encode("utf-8")
+    ).hexdigest()
+    cache_path = (
+        cache_root / f"{target_commit[:12]}-{input_sha}.json"
+        if cache_root is not None
+        else None
+    )
+    if cache_path is not None and cache_path.is_file():
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        if not isinstance(cached, dict):
+            raise ValueError("Phase A case cache entry must be a JSON object")
+        if cached.get("schema") != "ml-lab-phase-a-factory-case-cache/1":
+            raise ValueError("Unsupported Phase A case cache schema")
+        if cached.get("input_sha256") != input_sha:
+            raise ValueError("Phase A case cache input hash mismatch")
+        if cached.get("target_commit") != target_commit:
+            raise ValueError("Phase A case cache target commit mismatch")
+        raw_receipt = cached.get("receipt")
+        if not isinstance(raw_receipt, dict):
+            raise ValueError("Phase A case cache receipt must be an object")
+        receipt = _receipt_from_cache(raw_receipt)
+        _validate_cached_receipt(
+            receipt,
+            target_commit=target_commit,
+            fixture_id=str(fixture["fixture_id"]),
+        )
+        return receipt, True
+
+    receipt = exporter.export(
+        repository=repository,
+        ref=target_commit,
+        fixture=fixture,
+    )
+    if cache_path is not None:
+        payload = {
+            "schema": "ml-lab-phase-a-factory-case-cache/1",
+            "input_sha256": input_sha,
+            "target_commit": target_commit,
+            "fixture_id": fixture["fixture_id"],
+            "receipt": _receipt_to_cache(receipt),
+        }
+        cache_path.write_bytes(
+            (canonical_json(payload) + "\n").encode("utf-8")
+        )
+    return receipt, False
+
+
+def _receipt_to_cache(
+    receipt: PhaseAFixtureExportReceipt,
+) -> dict[str, object]:
+    return {
+        "status": receipt.status,
+        "commit_sha": receipt.commit_sha,
+        "contract_version": receipt.contract_version,
+        "fixture_id": receipt.fixture_id,
+        "fixture_sha256": receipt.fixture_sha256,
+        "route": receipt.route,
+        "failed_deterministic_stage": receipt.failed_deterministic_stage,
+        "request_sha256": receipt.request_sha256,
+        "request": receipt.request,
+        "fresh_process": receipt.fresh_process,
+        "ephemeral_sqlite_only": receipt.ephemeral_sqlite_only,
+        "network_access_allowed": receipt.network_access_allowed,
+        "resolver_dispatch_available": receipt.resolver_dispatch_available,
+        "authority_mutation_allowed": receipt.authority_mutation_allowed,
+        "error_code": receipt.error_code,
+        "error_message": receipt.error_message,
+        "receipt_artifact_digest": receipt.receipt_artifact_digest,
+    }
+
+
+def _receipt_from_cache(
+    value: Mapping[str, object],
+) -> PhaseAFixtureExportReceipt:
+    request_raw = value.get("request")
+    if request_raw is not None and not isinstance(request_raw, dict):
+        raise ValueError("Cached Phase A request must be an object")
+    return PhaseAFixtureExportReceipt(
+        status=str(value["status"]),
+        commit_sha=str(value["commit_sha"]),
+        contract_version=str(value["contract_version"]),
+        fixture_id=str(value["fixture_id"]),
+        fixture_sha256=str(value["fixture_sha256"]),
+        route=(str(value["route"]) if value.get("route") is not None else None),
+        failed_deterministic_stage=(
+            str(value["failed_deterministic_stage"])
+            if value.get("failed_deterministic_stage") is not None
+            else None
+        ),
+        request_sha256=(
+            str(value["request_sha256"])
+            if value.get("request_sha256") is not None
+            else None
+        ),
+        request=(
+            {str(key): item for key, item in request_raw.items()}
+            if isinstance(request_raw, dict)
+            else None
+        ),
+        fresh_process=value.get("fresh_process") is True,
+        ephemeral_sqlite_only=value.get("ephemeral_sqlite_only") is True,
+        network_access_allowed=value.get("network_access_allowed") is True,
+        resolver_dispatch_available=value.get("resolver_dispatch_available") is True,
+        authority_mutation_allowed=value.get("authority_mutation_allowed") is True,
+        error_code=(
+            str(value["error_code"])
+            if value.get("error_code") is not None
+            else None
+        ),
+        error_message=(
+            str(value["error_message"])
+            if value.get("error_message") is not None
+            else None
+        ),
+        receipt_artifact_digest=str(value["receipt_artifact_digest"]),
+    )
+
+
+def _validate_cached_receipt(
+    receipt: PhaseAFixtureExportReceipt,
+    *,
+    target_commit: str,
+    fixture_id: str,
+) -> None:
+    if receipt.commit_sha != target_commit:
+        raise ValueError("Cached Phase A receipt commit mismatch")
+    if receipt.contract_version != "semantic-residual-v2":
+        raise ValueError("Cached Phase A receipt contract mismatch")
+    if receipt.fixture_id != fixture_id:
+        raise ValueError("Cached Phase A receipt fixture mismatch")
+    if receipt.request is None:
+        if receipt.request_sha256 is not None:
+            raise ValueError("Cached missing request cannot have a request hash")
+        return
+    PhaseAResidualAdapter().validate_exported_request(receipt.request)
+    request_sha = hashlib.sha256(
+        canonical_json(receipt.request).encode("utf-8")
+    ).hexdigest()
+    if request_sha != receipt.request_sha256:
+        raise ValueError("Cached Phase A request hash mismatch")
+
+
+def _hidden_fixture_leaks(
+    *,
+    facts: Sequence[Mapping[str, object]],
+    request: Mapping[str, object],
+) -> list[dict[str, str]]:
+    visible_strings = _all_strings(request)
+    leaks: list[dict[str, str]] = []
+    for fact in facts:
+        if fact.get("visibility") != "GM_ONLY":
+            continue
+        key = fact.get("key")
+        if isinstance(key, str) and key in visible_strings:
+            leaks.append({"kind": "KEY", "value": key})
+        value = fact.get("value")
+        if isinstance(value, str) and value.strip() and value in visible_strings:
+            leaks.append({"kind": "VALUE", "value": value})
+    return leaks
+
+
+def _all_strings(value: object) -> set[str]:
+    strings: set[str] = set()
+    if isinstance(value, str):
+        strings.add(value)
+    elif isinstance(value, Mapping):
+        for key, item in value.items():
+            strings.add(str(key))
+            strings.update(_all_strings(item))
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        for item in value:
+            strings.update(_all_strings(item))
+    return strings
+
+
 def _proposal_from_author_label(case: Mapping[str, object]) -> dict[str, object]:
     expected = _mapping(case, "expected")
     decision = _required_text(expected, "decision")

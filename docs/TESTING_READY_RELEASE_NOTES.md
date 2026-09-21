@@ -1,12 +1,12 @@
 # v0.1.0-testing.5 Release Notes
 
-Status: **candidate notes — testing-ready promotion pending representative physical-Windows performance evidence**
+Status: **TESTING_READY — PRODUCT TESTING ONLY; INTEGRATION_GATE = NO_GO**
 
 `v0.1.0-testing.1` was not promoted after a real 132.31 ms background-import stall. `testing.2` removed that specific completion-refresh hitch, while `testing.3` corrected the ordinary-navigation evidence contract to measure repeatability without lowering the 100 ms threshold. The full `testing.3` physical receipt then found three genuine >100 ms GUI event-processing stalls during the 20,000-row import, peaking at 130.43 ms, even though all three ordinary-navigation rounds were clean. `testing.4` moved JSONL parse/validation/fingerprinting into a separate hidden application child process. The child produces only a disposable staged SQLite database; the parent process remains the sole owner of authoritative Lab metadata mutation and commits staged rows with set-based SQLite. Its source, Windows, scale, compiled-standalone, and compiled-performance smokes passed, but the CI candidate was not retained because the installed visual-evidence harness hit a Windows temporary-workspace cleanup race: QML/controller references were still alive when `TemporaryDirectory` tried to remove `lab.db`. `testing.5` explicitly tears down the controller timer/services and QML object graph before temporary workspace cleanup. No performance threshold or authority rule changes.
 
 ## Scope
 
-This is the first complete Windows testing candidate for Frankenhomie ML Lab.
+This is the first Windows product testing-ready release for Frankenhomie ML Lab.
 
 It provides the standalone development workflow for:
 
@@ -56,4 +56,18 @@ Phase A protected evaluation preserves the pinned deterministic preflight before
 
 ## Performance gate
 
-The candidate contains the full representative-machine evidence harness, but the release must not be called `TESTING_READY` until that full gate passes on representative modern physical Windows hardware and the exact tested executable hash matches the candidate build manifest.
+The full representative physical-Windows gate passed on the exact testing.5 executable.
+
+- startup: 1932.10 ms;
+- idle RAM: 125.93 MB;
+- ordinary navigation: three clean rounds, zero >100 ms GUI stalls;
+- 20,000-row background import: zero >100 ms GUI stalls, max 92.85 ms;
+- CPU-worker navigation: zero >100 ms GUI stalls;
+- cancellation acknowledgement: 37.43 ms;
+- receipt SHA-256: `63fb4aeef5b9191aaa5e6bcf84191d9b394aab6cf1fdf3124f89058786cd0f72`.
+
+The fail-closed promoter verified the candidate and copied the exact tested installer/portable bytes without rebuilding them. Promotion manifest SHA-256:
+
+`02192d63c258daca77e98c79d1e0c96a789e0ccbab16fb7012b3a141b4f211d9`
+
+This status is product testing readiness only. It does not install or activate a model in Frankenhomie and does not change `INTEGRATION_GATE = NO_GO`.

@@ -192,7 +192,14 @@ def run_phase_a_dataset_factory(
             dataset_path.unlink()
         dataset_sha: str | None = None
     else:
-        serialized = "".join(canonical_json(row) + "\n" for row in sorted(rows, key=lambda item: str(item["example_id"])))
+        ordered_rows = sorted(
+            rows,
+            key=lambda item: str(item["example_id"]),
+        )
+        serialized = "".join(
+            canonical_json(row) + "\n"
+            for row in ordered_rows
+        )
         dataset_path.write_text(serialized, encoding="utf-8")
         dataset_sha = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 

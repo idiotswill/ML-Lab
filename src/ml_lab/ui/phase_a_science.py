@@ -402,6 +402,12 @@ class PhaseAScienceController(QObject):
     def runBaseline(self, baseline_id: str) -> None:
         if not self._workspace or self._baseline_busy:
             return
+        if self._split is DatasetSplit.DEV:
+            self.operationFailed.emit(
+                "Baseline error",
+                "DEV is development evidence. Switch to TEST or REDTEAM for protected baselines.",
+            )
+            return
         record = self._selected_record()
         if record is None or record.contract_snapshot_id is None:
             self.operationFailed.emit(
@@ -442,6 +448,12 @@ class PhaseAScienceController(QObject):
     @Slot()
     def runProviderBaseline(self) -> None:
         if not self._workspace or self._baseline_busy:
+            return
+        if self._split is DatasetSplit.DEV:
+            self.operationFailed.emit(
+                "Local provider error",
+                "DEV is development evidence. Switch to TEST or REDTEAM for protected provider runs.",
+            )
             return
         record = self._selected_record()
         if record is None or record.contract_snapshot_id is None:

@@ -10,6 +10,7 @@ from pathlib import Path
 from ml_lab.core.models import DatasetSplit
 from ml_lab.datasets.leakage import (
     LeakageExample,
+    LeakageReport,
     canonical_json,
     content_fingerprint,
     near_signature,
@@ -300,9 +301,9 @@ def generate_phase_a_corpus(
         split.value: dict(
             sorted(
                 Counter(
-                    str(row["expected"]["action_family"])
+                    str(_mapping(row, "expected")["action_family"])
                     for row in residual_cases[split.value]
-                    if row["expected"]["decision"] == "RESOLVE"
+                    if _mapping(row, "expected")["decision"] == "RESOLVE"
                 ).items()
             )
         )
@@ -574,7 +575,7 @@ def _compound_cases(
     if not isinstance(pairs, list) or not pairs:
         raise ValueError(f"Missing compound pairs for {split.value}")
     scene_ids = _scene_ids(split, scenes)
-    rows = []
+    rows: list[dict[str, object]] = []
     for index in range(count):
         raw_pair = pairs[index % len(pairs)]
         if (
@@ -641,7 +642,7 @@ def _zero_model_cases(
     if count % len(categories) != 0:
         raise ValueError("Zero-model count must divide evenly across categories")
     scene_ids = _scene_ids(split, scenes)
-    rows = []
+    rows: list[dict[str, object]] = []
     per_category = count // len(categories)
     for category in categories:
         for variant in range(per_category):
@@ -908,6 +909,7 @@ def _candidate_keys_for_missing(
     family: str,
     missing_slot: str,
 ) -> list[str]:
+    groups: tuple[str, ...]
     if family == "HARM_TARGET" and missing_slot == "TARGET_COMBATANT":
         groups = ("combatants",)
     elif family == "MOVE_TRAVEL" and missing_slot == "DESTINATION":
@@ -961,7 +963,7 @@ def _protected_language_case(row: Mapping[str, object]) -> dict[str, object]:
 
 def _language_leakage(
     rows: Sequence[Mapping[str, object]],
-):
+) -> LeakageReport:
     examples = []
     for row in rows:
         split = DatasetSplit(str(row["split"]))
@@ -1003,9 +1005,9 @@ def _assert_family_coverage(
     required = set(_string_list(plan.get("required_family_coverage")))
     for split in DatasetSplit:
         observed = {
-            str(row["expected"]["action_family"])
+            str(_mapping(row, "expected")["action_family"])
             for row in residual_cases[split.value]
-            if row["expected"]["decision"] == "RESOLVE"
+            if _mapping(row, "expected")["decision"] == "RESOLVE"
         }
         if observed != required:
             raise ValueError(

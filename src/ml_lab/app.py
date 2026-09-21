@@ -98,6 +98,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--phase-a-freeze-dataset",
+        type=Path,
+        help="Freeze Phase A TRAIN/DEV candidate data into this ML Lab workspace.",
+    )
+    parser.add_argument(
+        "--phase-a-factory-output",
+        type=Path,
+        help="Phase A factory output directory containing receipt and JSONL.",
+    )
+    parser.add_argument(
         "--verify-bundle-worker",
         type=Path,
         help=argparse.SUPPRESS,
@@ -304,6 +314,38 @@ def main(argv: list[str] | None = None) -> int:
             return 17
         print(json.dumps(result, sort_keys=True))
         return 0 if result.get("ok") is True else 18
+    if args.phase_a_freeze_dataset:
+        if args.frankenhomie_repo is None:
+            print("--frankenhomie-repo is required", file=sys.stderr)
+            return 19
+        if args.phase_a_factory_output is None:
+            print("--phase-a-factory-output is required", file=sys.stderr)
+            return 20
+        from ml_lab.adapters.phase_a_freeze import freeze_phase_a_train_dev
+
+        factory_root = args.phase_a_factory_output.expanduser().resolve()
+        try:
+            result = freeze_phase_a_train_dev(
+                frankenhomie_repository=args.frankenhomie_repo,
+                factory_receipt_path=factory_root / "factory-receipt.json",
+                dataset_path=factory_root / "phase-a-train-dev-v1.jsonl",
+                workspace_path=args.phase_a_freeze_dataset,
+            )
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "integration_gate": "NO_GO",
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+            return 21
+        print(json.dumps(result, sort_keys=True))
+        return 0
     if args.verify_bundle_worker:
         if args.verification_receipt is None:
             print("--verification-receipt is required", file=sys.stderr)

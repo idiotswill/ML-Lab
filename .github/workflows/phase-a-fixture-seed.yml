@@ -2,7 +2,7 @@ name: Phase A fixture seed checks
 
 on:
   push:
-    branches: [phase/a-fixture-seed, phase/a-fixture-receipt-runner, phase/a-v2-baselines, phase/a-authoritative-dataset-factory]
+    branches: [phase/a-fixture-seed, phase/a-fixture-receipt-runner, phase/a-v2-baselines, phase/a-authoritative-dataset-factory, phase/a-freeze-train-dev]
   workflow_dispatch:
 
 jobs:
@@ -21,12 +21,12 @@ jobs:
 
       - name: Focused static checks
         run: |
-          uv run ruff check src/ml_lab/app.py src/ml_lab/adapters/phase_a_fixture_export.py src/ml_lab/adapters/phase_a_fixture_seed.py src/ml_lab/adapters/phase_a_baselines.py src/ml_lab/adapters/phase_a_dataset_factory.py tests/test_phase_a_fixture_export.py tests/test_phase_a_fixture_seed.py tests/test_phase_a_fixture_seed_evidence.py tests/test_phase_a_fixture_evidence_cli.py tests/test_phase_a_baselines.py tests/test_phase_a_baseline_cli.py tests/test_phase_a_dataset_factory.py tests/test_phase_a_dataset_factory_cli.py
-          uv run mypy src/ml_lab/app.py src/ml_lab/adapters/phase_a_fixture_export.py src/ml_lab/adapters/phase_a_fixture_seed.py src/ml_lab/adapters/phase_a_baselines.py src/ml_lab/adapters/phase_a_dataset_factory.py
+          uv run ruff check src/ml_lab/app.py src/ml_lab/adapters/phase_a_fixture_export.py src/ml_lab/adapters/phase_a_fixture_seed.py src/ml_lab/adapters/phase_a_baselines.py src/ml_lab/adapters/phase_a_dataset_factory.py src/ml_lab/adapters/phase_a_freeze.py tests/test_phase_a_fixture_export.py tests/test_phase_a_fixture_seed.py tests/test_phase_a_fixture_seed_evidence.py tests/test_phase_a_fixture_evidence_cli.py tests/test_phase_a_baselines.py tests/test_phase_a_baseline_cli.py tests/test_phase_a_dataset_factory.py tests/test_phase_a_dataset_factory_cli.py tests/test_phase_a_freeze.py tests/test_phase_a_freeze_cli.py
+          uv run mypy src/ml_lab/app.py src/ml_lab/adapters/phase_a_fixture_export.py src/ml_lab/adapters/phase_a_fixture_seed.py src/ml_lab/adapters/phase_a_baselines.py src/ml_lab/adapters/phase_a_dataset_factory.py src/ml_lab/adapters/phase_a_freeze.py
 
       - name: Fixture bridge and seed checks
         run: |
-          uv run pytest -q tests/test_phase_a_fixture_export.py tests/test_phase_a_fixture_seed.py tests/test_phase_a_fixture_seed_evidence.py tests/test_phase_a_fixture_evidence_cli.py tests/test_phase_a_baselines.py tests/test_phase_a_baseline_cli.py tests/test_phase_a_dataset_factory.py tests/test_phase_a_dataset_factory_cli.py
+          uv run pytest -q tests/test_phase_a_fixture_export.py tests/test_phase_a_fixture_seed.py tests/test_phase_a_fixture_seed_evidence.py tests/test_phase_a_fixture_evidence_cli.py tests/test_phase_a_baselines.py tests/test_phase_a_baseline_cli.py tests/test_phase_a_dataset_factory.py tests/test_phase_a_dataset_factory_cli.py tests/test_phase_a_freeze.py tests/test_phase_a_freeze_cli.py
 
       - name: Pinned integration disclosure
         run: |

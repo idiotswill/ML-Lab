@@ -14,6 +14,7 @@ from ml_lab.experiments.service import ExperimentService
 from ml_lab.failures.service import FailureService
 from ml_lab.storage.workspace import Workspace
 from ml_lab.trainers.service import (
+    PHASE_A_CANDIDATE_TRAINER_ID,
     PHASE_A_RUNTIME_PACK_ID,
     PHASE_A_TRAINER_ID,
     SPARSE_RUNTIME_PACK_ID,
@@ -159,6 +160,10 @@ class CompareController(QObject):
         return self._split.value
 
     @Property(bool, notify=changed)
+    def developmentSplit(self) -> bool:
+        return self._split is DatasetSplit.DEV
+
+    @Property(bool, notify=changed)
     def onlyIncorrect(self) -> bool:
         return self._only_incorrect
 
@@ -267,13 +272,16 @@ class CompareController(QObject):
     def evaluatorMessage(self) -> str:
         record = self._selected_record()
         if record is None:
-            return "Select a completed experiment to inspect protected evidence."
+            return "Select a completed experiment to inspect evaluation evidence."
         if self._workspace:
             progress = EvaluationService(self._workspace).progress(record.id, self._split)
             if progress.expected <= 0:
                 return f"This dataset has no {self._split.value} examples."
             if progress.complete:
-                return f"{self._split.value} evidence is complete and immutable."
+                scope = "development" if self._split is DatasetSplit.DEV else "protected"
+                return (
+                    f"{self._split.value} {scope} evidence is complete and immutable."
+                )
             if progress.evaluated:
                 return (
                     f"Resume {self._split.value} evaluation from "
@@ -281,15 +289,20 @@ class CompareController(QObject):
                 )
         if self._has_packaged_evaluator(record):
             if self._adapter_id == PHASE_A_ADAPTER_ID:
+                scope = "development" if self._split is DatasetSplit.DEV else "protected"
                 return (
-                    f"Run protected {self._split.value} evaluation against the pinned "
+                    f"Run {scope} {self._split.value} evaluation against the pinned "
                     "Frankenhomie residual validator."
                 )
-            return f"Run protected {self._split.value} evaluation."
+            scope = "development" if self._split is DatasetSplit.DEV else "protected"
+            return f"Run {scope} {self._split.value} evaluation."
         if self._adapter_id == PHASE_A_ADAPTER_ID:
             if record.trainer_id.startswith("baseline:"):
                 return "Baseline evidence is created as an immutable protected evaluation run."
-            if record.trainer_id == PHASE_A_TRAINER_ID and not record.contract_snapshot_id:
+            if record.trainer_id in {
+                PHASE_A_TRAINER_ID,
+                PHASE_A_CANDIDATE_TRAINER_ID,
+            } and not record.contract_snapshot_id:
                 return "Phase A evaluation requires the experiment's pinned contract snapshot."
             return "No packaged pinned Phase A evaluator is compatible with this experiment."
         return "No packaged evaluator is compatible with this experiment."
@@ -346,10 +359,13 @@ class CompareController(QObject):
     @Slot(str)
     def setSplit(self, split: str) -> None:
         normalized = split.strip().upper()
-        if normalized not in {DatasetSplit.TEST.value, DatasetSplit.REDTEAM.value}:
+        allowed = {DatasetSplit.TEST.value, DatasetSplit.REDTEAM.value}
+        if self._adapter_id == PHASE_A_ADAPTER_ID:
+            allowed.add(DatasetSplit.DEV.value)
+        if normalized not in allowed:
             self.operationFailed.emit(
                 "Compare error",
-                f"Unsupported protected split: {split}",
+                f"Unsupported evaluation split: {split}",
             )
             return
         self._split = DatasetSplit(normalized)
@@ -418,8 +434,9 @@ class CompareController(QObject):
         self._cancel_event = None
         self._science.refresh()
         self.changed.emit()
+        scope = "Development" if split == DatasetSplit.DEV.value else "Protected"
         self.operationCompleted.emit(
-            f"Protected {split} evaluation complete for {experiment_id[:8]}"
+            f"{scope} {split} evaluation complete for {experiment_id[:8]}"
         )
 
     @Slot(int, str, str)
@@ -489,7 +506,10 @@ class CompareController(QObject):
             )
         if self._adapter_id == PHASE_A_ADAPTER_ID:
             return bool(
-                record.trainer_id == PHASE_A_TRAINER_ID
+                record.trainer_id in {
+                    PHASE_A_TRAINER_ID,
+                    PHASE_A_CANDIDATE_TRAINER_ID,
+                }
                 and record.runtime_pack_id == PHASE_A_RUNTIME_PACK_ID
                 and record.contract_snapshot_id
             )

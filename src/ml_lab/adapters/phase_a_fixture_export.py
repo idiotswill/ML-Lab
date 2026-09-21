@@ -10,7 +10,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 from ml_lab.adapters.phase_a import PHASE_A_CONTRACT_VERSION, PhaseAResidualAdapter
 from ml_lab.adapters.phase_a_reference import PhaseAReferenceValidator
@@ -228,7 +228,7 @@ def run_phase_a_fixture_export_child(spec_path: Path) -> int:
 
             facts = tuple(
                 orchestrator.TurnFact.model_validate(raw)
-                for raw in fixture["facts"]
+                for raw in cast(list[dict[str, object]], fixture["facts"])
             )
 
             class CaptureProvider:
@@ -252,7 +252,9 @@ def run_phase_a_fixture_export_child(spec_path: Path) -> int:
                 audience=str(fixture["audience"]),
                 facts=facts,
                 snapshot_revision=str(fixture["snapshot_revision"]),
-                allowed_action_families=tuple(fixture["allowed_action_families"]),
+                allowed_action_families=tuple(
+                    cast(list[str], fixture["allowed_action_families"])
+                ),
                 provider=provider,
                 combat_revision=0,
             )

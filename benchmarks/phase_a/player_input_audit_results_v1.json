@@ -1,0 +1,49 @@
+{
+  "schema": "ml-lab-player-input-audit-results/1",
+  "audit_corpus": "player_input_audit_v1.jsonl.gz",
+  "case_count": 55,
+  "target_contract": "semantic-residual-v2",
+  "target_frankenhomie_commit": "1ff3e2155a3c2d2b316023e9933edf3a6d53697f",
+  "target_ml_lab_commit": "550b8bdf42689b00bd3caa0b406a844bfc9e65a5",
+  "splits": {"TEST": 15, "REDTEAM": 40},
+  "audit_classes": {
+    "ASK_PLAYER": 23,
+    "CLEAN_CURRENT_CONTRACT": 1,
+    "DETERMINISTIC_PREPROCESSING_REQUIRED": 15,
+    "MISSING_OR_UNCLEAR_CONTRACT": 6,
+    "RULES_META_OUTSIDE_RESIDUAL": 10
+  },
+  "lexical_family_signal": {
+    "method": "exact current semantic_family_registry deterministic_alias phrase matching; family signal only, not a protected Phase A baseline run",
+    "histogram": {"0": 32, "1": 16, "2": 6, "3": 1},
+    "zero_family_signals": 32,
+    "one_family_signal": 16,
+    "multiple_family_signals": 7
+  },
+  "protected_baselines": {
+    "deterministic_abstention": {
+      "status": "NOT_RUN_ON_RAW_AUDIT",
+      "reason": "Requires an authoritative exported semantic-residual-v2 request."
+    },
+    "bounded_lexical": {
+      "status": "NOT_RUN_ON_RAW_AUDIT",
+      "reason": "Requires authoritative allowed families, family-slot envelopes and visible candidates; fabricating them from transcript prose would create parallel authority."
+    },
+    "local_provider_qwen": {
+      "status": "NOT_RUN",
+      "reason": "No loopback Ollama/OpenAI-compatible provider was available; no substitute model was used."
+    }
+  },
+  "historical_qwen_reference": {
+    "source": "PHASE_A5_SEMANTIC_INTAKE_RESULTS_V7.json",
+    "model": "qwen3.5:4b-q4_K_M",
+    "decision_accuracy": 0.9117647058823529,
+    "family_slot_accuracy": 0.8235294117647058,
+    "accepted_resolution_precision": 1.0,
+    "false_commitment_count": 0,
+    "fact_envelope_violations": 1,
+    "median_latency_seconds": 5.718,
+    "independent_qa": false
+  },
+  "integration_gate": "NO_GO"
+}

@@ -19,6 +19,9 @@ from ml_lab.datasets.leakage import (
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CORPUS_PLAN = _REPO_ROOT / "benchmarks" / "phase_a" / "corpus_plan_v1.json"
+DEFAULT_BOOTSTRAP_PROTECTED_SEED = (
+    _REPO_ROOT / "benchmarks" / "phase_a" / "authoritative_fixture_seed_v1.json"
+)
 
 _FAMILIES = (
     "HARM_TARGET",
@@ -67,6 +70,15 @@ def generate_phase_a_corpus(
     if not isinstance(plan, dict):
         raise ValueError("Phase A corpus plan must be a JSON object")
     _validate_plan(plan)
+    bootstrap_bytes = DEFAULT_BOOTSTRAP_PROTECTED_SEED.read_bytes()
+    bootstrap = json.loads(bootstrap_bytes)
+    if not isinstance(bootstrap, dict):
+        raise ValueError("Bootstrap protected seed must be a JSON object")
+    bootstrap_cases = bootstrap.get("cases")
+    if not isinstance(bootstrap_cases, list) or not all(
+        isinstance(row, dict) for row in bootstrap_cases
+    ):
+        raise ValueError("Bootstrap protected seed cases must be objects")
 
     scenes: dict[str, dict[str, object]] = {}
     residual_cases: dict[str, list[dict[str, object]]] = {
@@ -133,6 +145,17 @@ def generate_phase_a_corpus(
     _assert_family_coverage(plan, residual_cases)
     _assert_resolve_lexicons_are_residual_only(plan)
 
+    bootstrap_language_rows = [
+        {
+            "case_id": f"bootstrap:{row['case_id']}",
+            "split": row["split"],
+            "lineage_group": f"bootstrap:{row['lineage_group']}",
+            "declaration": row["declaration"],
+            "tags": row.get("tags", []),
+            "training_allowed": False,
+        }
+        for row in bootstrap_cases
+    ]
     all_language_rows = [
         *(
             row
@@ -140,6 +163,7 @@ def generate_phase_a_corpus(
             for row in split_rows
         ),
         *zero_model_cases,
+        *bootstrap_language_rows,
     ]
     language_report = _language_leakage(all_language_rows)
     if language_report.has_blockers:
@@ -227,6 +251,7 @@ def generate_phase_a_corpus(
                 *residual_cases[DatasetSplit.TEST.value],
                 *residual_cases[DatasetSplit.REDTEAM.value],
                 *zero_model_cases,
+                *bootstrap_language_rows,
             ]
         ],
     }
@@ -308,6 +333,9 @@ def generate_phase_a_corpus(
         "target_frankenhomie_commit": plan["target_frankenhomie_commit"],
         "target_contract": plan["target_contract"],
         "plan_sha256": hashlib.sha256(plan_bytes).hexdigest(),
+        "bootstrap_protected_seed_sha256": hashlib.sha256(
+            bootstrap_bytes
+        ).hexdigest(),
         "case_count": sum(split_counts.values()),
         "split_counts": split_counts,
         "family_resolve_counts": family_counts,
@@ -462,7 +490,7 @@ def _resolve_cases(
                     "slots": slots,
                 },
                 "case_kind": "RESIDUAL_RESOLVE",
-                "training_allowed": split in {DatasetSplit.TRAIN, DatasetSplit.DEV},
+                "training_allowed": split is DatasetSplit.TRAIN,
                 "tags": [
                     "synthetic",
                     "residual",
@@ -482,7 +510,7 @@ def _ambiguous_cases(
     count: int,
     scenes: Mapping[str, Mapping[str, object]],
 ) -> list[dict[str, object]]:
-    templates = _mapping(_mapping(plan, "ambiguous_templates"), split.value)
+    templates = _mapping(plan, "ambiguous_templates").get(split.value)
     if not isinstance(templates, list) or not templates:
         raise ValueError(f"Missing ambiguous templates for {split.value}")
     scene_ids = _scene_ids(split, scenes)
@@ -520,7 +548,7 @@ def _ambiguous_cases(
                     "candidate_keys": candidate_keys,
                 },
                 "case_kind": "RESIDUAL_AMBIGUOUS_REFERENCE",
-                "training_allowed": split in {DatasetSplit.TRAIN, DatasetSplit.DEV},
+                "training_allowed": split is DatasetSplit.TRAIN,
                 "tags": [
                     "synthetic",
                     "residual",
@@ -586,7 +614,7 @@ def _compound_cases(
                     "candidate_keys": [],
                 },
                 "case_kind": "RESIDUAL_COMPOUND_ASK_ONLY",
-                "training_allowed": split in {DatasetSplit.TRAIN, DatasetSplit.DEV},
+                "training_allowed": split is DatasetSplit.TRAIN,
                 "tags": [
                     "synthetic",
                     "residual",

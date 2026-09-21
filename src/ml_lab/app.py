@@ -193,6 +193,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument("--qml-smoke-test", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--workspace",
+        type=Path,
+        help="Open this existing ML Lab workspace when the GUI starts.",
+    )
     return parser
 
 
@@ -459,7 +464,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result.get("ok") else 10
     if args.qml_smoke_test:
         return qml_smoke_test()
-    return run_gui()
+    return run_gui(args.workspace)
 
 
 def smoke_test() -> int:
@@ -788,7 +793,7 @@ def qml_smoke_test() -> int:
     return 0 if ok else 2
 
 
-def run_gui() -> int:
+def run_gui(workspace_path: Path | None = None) -> int:
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
     from PySide6.QtCore import QUrl
     from PySide6.QtGui import QGuiApplication
@@ -814,6 +819,8 @@ def run_gui() -> int:
     engine.load(QUrl.fromLocalFile(str(qml_path)))
     if not engine.rootObjects():
         return 2
+    if workspace_path is not None:
+        controller.openWorkspace(str(workspace_path.expanduser().resolve()), False)
     return app.exec()
 
 

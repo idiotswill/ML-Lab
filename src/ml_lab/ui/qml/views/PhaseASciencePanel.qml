@@ -90,13 +90,16 @@ Panel {
 
             Text {
                 Layout.fillWidth: true
-                text: "Rerun baselines on this experiment's same frozen dataset + contract."
+                text: scienceController.developmentSplit ?
+                          "DEV is development evidence. Metrics are shown here, but protected baselines stay on TEST/REDTEAM." :
+                          "Rerun baselines on this experiment's same frozen dataset + contract."
                 color: Theme.muted
                 font.pixelSize: 10
                 wrapMode: Text.WordWrap
             }
 
             Repeater {
+                visible: !scienceController.developmentSplit
                 model: scienceController.baselineOptions
 
                 delegate: RowLayout {
@@ -114,8 +117,9 @@ Panel {
             }
 
             Rectangle {
+                visible: !scienceController.developmentSplit
                 Layout.fillWidth: true
-                implicitHeight: 116
+                implicitHeight: visible ? 116 : 0
                 radius: 7
                 color: Theme.surfaceAlt
                 border.color: Theme.border

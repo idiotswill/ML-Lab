@@ -1,14 +1,26 @@
 import json
 from pathlib import Path
 
-from ml_lab.core.models import DatasetSplit, FailureSeverity
+from ml_lab.adapters.phase_a import PHASE_A_ADAPTER_ID
+from ml_lab.core.models import (
+    DatasetSplit,
+    ExperimentRecord,
+    ExperimentStatus,
+    FailureSeverity,
+    utc_now_iso,
+)
 from ml_lab.datasets.service import DatasetService, ValidatedExampleInput
 from ml_lab.evaluation.runners import evaluate_generic_sparse_experiment
 from ml_lab.evaluation.service import CaseOutcome, EvaluationService
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.failures.service import FailureService
 from ml_lab.storage.workspace import Workspace
-from ml_lab.trainers.service import SPARSE_RUNTIME_PACK_ID, SPARSE_TRAINER_ID
+from ml_lab.trainers.service import (
+    PHASE_A_CANDIDATE_TRAINER_ID,
+    PHASE_A_RUNTIME_PACK_ID,
+    SPARSE_RUNTIME_PACK_ID,
+    SPARSE_TRAINER_ID,
+)
 from ml_lab.trainers.sparse_nb import SparseNBBuilder
 from ml_lab.ui.compare import CompareController
 
@@ -162,3 +174,45 @@ def test_compare_drills_from_case_to_immutable_failure_record(tmp_path: Path) ->
         )
     finally:
         controller.shutdown()
+
+
+def test_compare_allows_dev_only_for_phase_a_and_recognizes_candidate_evaluator(
+    tmp_path: Path,
+) -> None:
+    workspace = Workspace.create(tmp_path / "phase-a-workspace")
+    project = workspace.create_project("Phase A", PHASE_A_ADAPTER_ID)
+    controller = CompareController()
+    try:
+        controller.bind_project(workspace, project.id, PHASE_A_ADAPTER_ID)
+        controller.setSplit("DEV")
+        assert controller.split == DatasetSplit.DEV.value
+        assert controller.developmentSplit is True
+
+        candidate = ExperimentRecord(
+            id="candidate-experiment",
+            project_id=project.id,
+            dataset_id="dataset",
+            trainer_id=PHASE_A_CANDIDATE_TRAINER_ID,
+            runtime_pack_id=PHASE_A_RUNTIME_PACK_ID,
+            status=ExperimentStatus.COMPLETED,
+            config_json="{}",
+            seed=0,
+            environment_json="{}",
+            created_at=utc_now_iso(),
+            contract_snapshot_id="snapshot",
+            model_artifact_digest="a" * 64,
+        )
+        assert controller._has_packaged_evaluator(candidate) is True
+    finally:
+        controller.shutdown()
+
+    generic_workspace = Workspace.create(tmp_path / "generic-workspace")
+    generic_project = generic_workspace.create_project("Generic", "generic")
+    generic = CompareController()
+    try:
+        generic.bind_project(generic_workspace, generic_project.id, "generic")
+        generic.setSplit("DEV")
+        assert generic.split == DatasetSplit.TEST.value
+        assert generic.developmentSplit is False
+    finally:
+        generic.shutdown()

@@ -246,11 +246,11 @@ def build_phase_a_protected_evidence(
         "integration_gate": "NO_GO",
     }
     payload_sha = hashlib.sha256(canonical_json(base).encode()).hexdigest()
-    receipt = {**base, "payload_sha256": payload_sha}
+    final_receipt = {**base, "payload_sha256": payload_sha}
     (output_root / "protected-authority-receipt.json").write_bytes(
-        (canonical_json(receipt) + "\n").encode("utf-8")
+        (canonical_json(final_receipt) + "\n").encode("utf-8")
     )
-    return receipt
+    return final_receipt
 
 
 def _fixture(

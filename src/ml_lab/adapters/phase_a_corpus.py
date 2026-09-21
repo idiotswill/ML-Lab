@@ -376,10 +376,11 @@ def _resolve_cases(
     cases: list[dict[str, object]] = []
 
     for index in range(count):
-        scene_id = scene_ids[index % len(scene_ids)]
+        cycle = index // len(raw_lexicon)
+        scene_id = scene_ids[(index + cycle) % len(scene_ids)]
         scene = scenes[scene_id]
         details = _mapping(scene, "details")
-        style = styles[(index // len(raw_lexicon)) % len(styles)]
+        style = styles[cycle % len(styles)]
         candidate_index = index % 2
         phrase: str
         slots: list[dict[str, str]]
@@ -582,7 +583,8 @@ def _compound_cases(
             or not all(isinstance(item, str) for item in raw_pair)
         ):
             raise ValueError("Compound pairs must contain two strings")
-        scene_id = scene_ids[index % len(scene_ids)]
+        cycle = index // len(pairs)
+        scene_id = scene_ids[(index + cycle) % len(scene_ids)]
         details = _mapping(scenes[scene_id], "details")
         values = {
             "object": _detail_name(details, "objects", index % 2),

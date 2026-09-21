@@ -137,6 +137,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--phase-a-expanded-dev-bakeoff",
+        type=Path,
+        help=(
+            "Run the expanded Phase A DEV bake-off in this frozen workspace "
+            "without evaluating TEST or REDTEAM."
+        ),
+    )
+    parser.add_argument(
         "--phase-a-generate-corpus",
         type=Path,
         help="Generate the expanded Phase A synthetic corpus into this directory.",
@@ -436,6 +444,30 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 23
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    if args.phase_a_expanded_dev_bakeoff:
+        from ml_lab.adapters.phase_a_expanded_bakeoff import (
+            run_expanded_phase_a_dev_bakeoff,
+        )
+
+        try:
+            result = run_expanded_phase_a_dev_bakeoff(
+                workspace_path=args.phase_a_expanded_dev_bakeoff,
+            )
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "integration_gate": "NO_GO",
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+            return 31
         print(json.dumps(result, sort_keys=True))
         return 0
     if args.phase_a_complete_expanded_dataset:

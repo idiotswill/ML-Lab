@@ -7,7 +7,10 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from ml_lab.adapters.phase_a import PhaseAResidualAdapter
-from ml_lab.adapters.phase_a_fixture_export import PhaseAFixtureExporter
+from ml_lab.adapters.phase_a_fixture_export import (
+    PhaseAFixtureExporter,
+    PhaseAFixtureExportReceipt,
+)
 from ml_lab.adapters.phase_a_reference import PhaseAReferenceValidator
 from ml_lab.core.models import DatasetSplit
 from ml_lab.datasets.leakage import (
@@ -37,6 +40,7 @@ def run_phase_a_dataset_factory(
     output_dir: Path,
     seed_path: Path = DEFAULT_SYNTHETIC_SEED,
     protected_seed_path: Path = DEFAULT_PROTECTED_SEED,
+    case_cache_dir: Path | None = None,
 ) -> dict[str, object]:
     seed_bytes = seed_path.read_bytes()
     protected_bytes = protected_seed_path.read_bytes()
@@ -57,6 +61,18 @@ def run_phase_a_dataset_factory(
     exporter = PhaseAFixtureExporter(workspace)
     reference = PhaseAReferenceValidator(workspace)
     adapter = PhaseAResidualAdapter()
+    cache_root = (
+        case_cache_dir.expanduser().resolve()
+        if case_cache_dir is not None
+        else None
+    )
+    if cache_root is not None:
+        cache_root.mkdir(parents=True, exist_ok=True)
+    cache_hits = 0
+    cache_misses = 0
+    source_id_prefix = str(
+        seed.get("source_id_prefix") or "synthetic-train-dev-v1"
+    )
 
     rows: list[dict[str, object]] = []
     case_results: list[dict[str, object]] = []
@@ -81,11 +97,17 @@ def run_phase_a_dataset_factory(
             "snapshot_revision": _required_text(scene_raw, "snapshot_revision"),
             "facts": list(_sequence_mapping(scene_raw, "facts")),
         }
-        receipt = exporter.export(
+        receipt, cache_hit = _cached_export(
+            exporter=exporter,
             repository=frankenhomie_repository,
-            ref=target_commit,
+            target_commit=target_commit,
             fixture=fixture,
+            cache_root=cache_root,
         )
+        if cache_hit:
+            cache_hits += 1
+        else:
+            cache_misses += 1
         result: dict[str, object] = {
             "case_id": case_id,
             "split": split.value,
@@ -109,6 +131,20 @@ def run_phase_a_dataset_factory(
                         "route": receipt.route,
                         "error_code": receipt.error_code,
                     },
+                }
+            )
+            continue
+
+        hidden_leaks = _hidden_fixture_leaks(
+            facts=_sequence_mapping(scene_raw, "facts"),
+            request=receipt.request,
+        )
+        if hidden_leaks:
+            errors.append(
+                {
+                    "case_id": case_id,
+                    "code": "HIDDEN_FIXTURE_FACT_LEAK",
+                    "detail": hidden_leaks,
                 }
             )
             continue
@@ -146,7 +182,7 @@ def run_phase_a_dataset_factory(
         row: dict[str, object] = {
             "example_id": case_id,
             "split": split.value,
-            "source_id": f"synthetic-train-dev-v1:{case_id}",
+            "source_id": f"{source_id_prefix}:{case_id}",
             "lineage_group": _required_text(raw_case, "lineage_group"),
             "request": receipt.request,
             "expected": expected,
@@ -221,6 +257,11 @@ def run_phase_a_dataset_factory(
         "protected_language_leakage": language_report.to_dict(),
         "case_results": case_results,
         "errors": errors,
+        "case_cache": {
+            "enabled": cache_root is not None,
+            "hits": cache_hits,
+            "misses": cache_misses,
+        },
         "production_data": False,
         "transcript_derived": False,
         "trainer_visible_splits": ["TRAIN", "DEV"],

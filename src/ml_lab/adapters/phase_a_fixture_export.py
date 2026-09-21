@@ -217,6 +217,10 @@ def run_phase_a_fixture_export_child(spec_path: Path) -> int:
         db_module = __import__("asterra.db", fromlist=["SCHEMA"])
         routing = __import__("asterra.semantic_routing", fromlist=["route_player_semantics"])
         orchestrator = __import__("asterra.turn_orchestrator", fromlist=["TurnFact"])
+        semantic_dispatch = __import__(
+            "asterra.semantic_dispatch",
+            fromlist=["registered_semantic_families"],
+        )
 
         conn = sqlite3.connect(":memory:")
         try:
@@ -253,7 +257,7 @@ def run_phase_a_fixture_export_child(spec_path: Path) -> int:
                 facts=facts,
                 snapshot_revision=str(fixture["snapshot_revision"]),
                 allowed_action_families=tuple(
-                    cast(list[str], fixture["allowed_action_families"])
+                    semantic_dispatch.registered_semantic_families()
                 ),
                 provider=provider,
                 combat_revision=0,
@@ -330,13 +334,6 @@ def _validate_fixture(fixture: Mapping[str, object]) -> dict[str, object]:
         raise ValueError("Phase A fixture export refuses Production/campaign data")
     snapshot_revision = _required_text(fixture, "snapshot_revision")
 
-    raw_families = fixture.get("allowed_action_families")
-    if not isinstance(raw_families, (list, tuple)) or not raw_families:
-        raise ValueError("allowed_action_families must be a non-empty list")
-    families = tuple(str(value) for value in raw_families)
-    if any(not value for value in families) or len(set(families)) != len(families):
-        raise ValueError("allowed_action_families must contain unique non-empty strings")
-
     raw_facts = fixture.get("facts")
     if not isinstance(raw_facts, (list, tuple)):
         raise ValueError("facts must be a list")
@@ -357,7 +354,6 @@ def _validate_fixture(fixture: Mapping[str, object]) -> dict[str, object]:
         "actor_id": actor_id,
         "audience": audience,
         "snapshot_revision": snapshot_revision,
-        "allowed_action_families": list(families),
         "facts": facts,
     }
 

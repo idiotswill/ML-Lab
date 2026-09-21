@@ -117,8 +117,9 @@ Panel {
             }
 
             Rectangle {
+                visible: !scienceController.developmentSplit
                 Layout.fillWidth: true
-                implicitHeight: 116
+                implicitHeight: visible ? 116 : 0
                 radius: 7
                 color: Theme.surfaceAlt
                 border.color: Theme.border

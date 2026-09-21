@@ -90,7 +90,7 @@
       "SEARCH_INSPECT": ["scrutinize", "sift through", "comb", "catalogue", "scope", "evaluate"],
       "SPEECH_ONLY": ["beseech", "accost", "implore", "notify", "appeal to", "jaw with"],
       "CAST_SPELL": ["evoke", "loose", "kindle", "radiate", "form", "voice"],
-      "USE_ITEM": ["toss back", "quench with", "drink down", "polish off", "wet my throat with", "finish"],
+      "USE_ITEM": ["toss back", "quench with", "slake myself with", "polish off", "wet my throat with", "finish"],
       "INTERACT_OBJECT": [
         {"phrase": "peel {object} ajar", "operation": "OPEN", "kind": "object"},
         {"phrase": "draw {object} wide", "operation": "OPEN", "kind": "object"},

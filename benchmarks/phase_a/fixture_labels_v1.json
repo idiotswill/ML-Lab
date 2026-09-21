@@ -1,0 +1,37 @@
+{
+  "schema": "ml-lab-phase-a-fixture-labels/1",
+  "status": "PROTECTED_EVALUATION_ONLY",
+  "receipt_payload_sha256": "15af7aa04a9546fc4db6c8fae71706efa9de6f5bec364dfa84e903810d2d805c",
+  "target_frankenhomie_commit": "1ff3e2155a3c2d2b316023e9933edf3a6d53697f",
+  "target_contract": "semantic-residual-v2",
+  "annotation_role": "BENCHMARK_GROUND_TRUTH_NOT_GAME_AUTHORITY",
+  "training_allowed": false,
+  "cases": [
+    {
+      "case_id": "seed-unfamiliar-scrutinize",
+      "expected_decision": "RESOLVE",
+      "expected_family": "SEARCH_INSPECT",
+      "expected_slots": [
+        {"name": "SUBJECT", "value": "object:hatch"}
+      ],
+      "expected_missing_slots": [],
+      "notes": "Synthetic author intent: scrutinize the named visible hatch."
+    },
+    {
+      "case_id": "seed-ambiguous-pronoun",
+      "expected_decision": "ASK_PLAYER",
+      "expected_family": "SEARCH_INSPECT",
+      "expected_slots": [],
+      "expected_missing_slots": ["SUBJECT"],
+      "notes": "Two visible objects make pronoun identity genuinely ambiguous."
+    },
+    {
+      "case_id": "seed-compound-inspect-open",
+      "expected_decision": "ASK_PLAYER",
+      "expected_family": null,
+      "expected_slots": [],
+      "expected_missing_slots": ["PRIMARY_ACTION"],
+      "notes": "Current contract is ASK-only for multiple committed actions."
+    }
+  ]
+}

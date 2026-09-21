@@ -68,6 +68,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--phase-a-baseline-evidence",
+        type=Path,
+        help="Write Phase A v2 baseline evidence to this JSON path.",
+    )
+    parser.add_argument(
+        "--phase-a-baseline-receipt",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--phase-a-baseline-labels",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--verify-bundle-worker",
         type=Path,
         help=argparse.SUPPRESS,
@@ -198,6 +213,43 @@ def main(argv: list[str] | None = None) -> int:
             return 12
         print(json.dumps(result, sort_keys=True))
         return 0 if result.get("ok") is True else 13
+    if args.phase_a_baseline_evidence:
+        if args.frankenhomie_repo is None:
+            print("--frankenhomie-repo is required", file=sys.stderr)
+            return 14
+        from ml_lab.adapters.phase_a_baselines import (
+            DEFAULT_PHASE_A_FIXTURE_LABELS,
+            DEFAULT_PHASE_A_FIXTURE_RECEIPT,
+            run_phase_a_baselines,
+        )
+
+        receipt_path = args.phase_a_baseline_receipt or DEFAULT_PHASE_A_FIXTURE_RECEIPT
+        labels_path = args.phase_a_baseline_labels or DEFAULT_PHASE_A_FIXTURE_LABELS
+        try:
+            with tempfile.TemporaryDirectory(prefix="ml-lab-phase-a-baselines-") as temp:
+                workspace = Workspace.create(Path(temp) / "workspace")
+                result = run_phase_a_baselines(
+                    workspace=workspace,
+                    frankenhomie_repository=args.frankenhomie_repo,
+                    receipt_path=receipt_path,
+                    labels_path=labels_path,
+                    output_path=args.phase_a_baseline_evidence,
+                )
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "integration_gate": "NO_GO",
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+            return 15
+        print(json.dumps(result, sort_keys=True))
+        return 0
     if args.verify_bundle_worker:
         if args.verification_receipt is None:
             print("--verification-receipt is required", file=sys.stderr)

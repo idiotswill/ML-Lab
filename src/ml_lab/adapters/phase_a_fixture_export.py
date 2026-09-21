@@ -327,6 +327,18 @@ def run_phase_a_fixture_export_child(spec_path: Path) -> int:
 
 
 def _validate_fixture(fixture: Mapping[str, object]) -> dict[str, object]:
+    forbidden_authority = {
+        "allowed_action_families",
+        "family_slots",
+        "candidates",
+        "permitted_decisions",
+    }
+    supplied_authority = forbidden_authority & set(fixture)
+    if supplied_authority:
+        raise ValueError(
+            "Phase A fixture cannot supply authority envelope fields: "
+            + ", ".join(sorted(supplied_authority))
+        )
     fixture_id = _required_text(fixture, "fixture_id")
     declaration = _required_text(fixture, "declaration")
     actor_id = _required_text(fixture, "actor_id")

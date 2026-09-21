@@ -4,8 +4,9 @@ import hashlib
 import json
 from pathlib import Path
 
-import ml_lab.adapters.phase_a_first_experiment as runner
 import pytest
+
+import ml_lab.adapters.phase_a_first_experiment as runner
 from ml_lab.core.models import (
     DatasetSplit,
     JobRecord,

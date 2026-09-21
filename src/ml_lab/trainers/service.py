@@ -26,6 +26,7 @@ from ml_lab.storage.workspace import Workspace
 SPARSE_TRAINER_ID = "builtin.sparse_nb.v1"
 SPARSE_RUNTIME_PACK_ID = "builtin-python"
 PHASE_A_TRAINER_ID = "builtin.phase_a_sparse.v1"
+PHASE_A_CANDIDATE_TRAINER_ID = "builtin.phase_a_candidate_sparse.v1"
 PHASE_A_RUNTIME_PACK_ID = "builtin-python"
 
 
@@ -62,6 +63,16 @@ _BUILTIN_TRAINING_OPTIONS = (
     TrainingOption(
         trainer_id=PHASE_A_TRAINER_ID,
         display_name="Phase A Bounded Sparse Scorer (CPU)",
+        runtime_pack_id=PHASE_A_RUNTIME_PACK_ID,
+        runtime_display_name="Built-in Sparse CPU Runtime",
+        adapter_ids=(PHASE_A_ADAPTER_ID,),
+        default_text_key="",
+        default_label_key="",
+        uses_payload_keys=False,
+    ),
+    TrainingOption(
+        trainer_id=PHASE_A_CANDIDATE_TRAINER_ID,
+        display_name="Phase A Candidate-Relative Sparse Scorer (CPU)",
         runtime_pack_id=PHASE_A_RUNTIME_PACK_ID,
         runtime_display_name="Built-in Sparse CPU Runtime",
         adapter_ids=(PHASE_A_ADAPTER_ID,),
@@ -120,6 +131,8 @@ class TrainingService:
             return self.launch_sparse(experiment_id)
         if experiment.trainer_id == PHASE_A_TRAINER_ID:
             return self.launch_phase_a_sparse(experiment_id)
+        if experiment.trainer_id == PHASE_A_CANDIDATE_TRAINER_ID:
+            return self.launch_phase_a_candidate_sparse(experiment_id)
         raise ValueError(f"No packaged launcher for trainer {experiment.trainer_id!r}.")
 
     def launch_sparse(self, experiment_id: str) -> TrainingState:
@@ -176,6 +189,39 @@ class TrainingService:
         return self._start_job(
             experiment,
             "trainer.phase_a_sparse.v1",
+            payload,
+            staged,
+        )
+
+    def launch_phase_a_candidate_sparse(self, experiment_id: str) -> TrainingState:
+        experiment = self._require_queued_experiment(
+            experiment_id,
+            trainer_id=PHASE_A_CANDIDATE_TRAINER_ID,
+            runtime_pack_id=PHASE_A_RUNTIME_PACK_ID,
+        )
+        if experiment.contract_snapshot_id is None:
+            raise RuntimeError("Phase A training requires a pinned contract snapshot.")
+        snapshot = ContractSnapshotService(self.workspace).get(
+            experiment.contract_snapshot_id
+        )
+        if snapshot.project_id != experiment.project_id:
+            raise ValueError("Pinned contract snapshot belongs to a different project.")
+        if snapshot.adapter_id != PHASE_A_ADAPTER_ID:
+            raise ValueError("Pinned contract snapshot is not a Phase A residual contract.")
+        if snapshot.contract_version != PHASE_A_CONTRACT_VERSION:
+            raise ValueError("Pinned Phase A contract version is incompatible with training.")
+
+        handles = self._training_handles(experiment.id, include_dev=False)
+        staged = {"train.jsonl": handles["TRAIN"]}
+        config = _config_object(experiment)
+        payload = {
+            "experiment_id": experiment.id,
+            "feature_dim": _positive_int(config.get("feature_dim", 32768), "feature_dim"),
+            "alpha": _positive_float(config.get("alpha", 0.5), "alpha"),
+        }
+        return self._start_job(
+            experiment,
+            "trainer.phase_a_candidate_sparse.v1",
             payload,
             staged,
         )

@@ -188,6 +188,7 @@ def generate_phase_a_corpus(
         "transcript_derived": False,
         "actor_id": plan["actor_id"],
         "audience": plan["audience"],
+        "source_id_prefix": "synthetic-corpus-v1",
         "scenes": train_dev_scenes,
         "cases": [
             *residual_cases[DatasetSplit.TRAIN.value],

@@ -7,8 +7,14 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from ml_lab.adapters.phase_a import PhaseAResidualAdapter
-from ml_lab.adapters.phase_a_fixture_export import PhaseAFixtureExporter
-from ml_lab.adapters.phase_a_reference import PhaseAReferenceValidator
+from ml_lab.adapters.phase_a_fixture_export import (
+    PhaseAFixtureExporter,
+    PhaseAFixtureExportReceipt,
+)
+from ml_lab.adapters.phase_a_reference import (
+    PhaseAReferenceValidator,
+    ReferenceValidationReceipt,
+)
 from ml_lab.core.models import DatasetSplit
 from ml_lab.datasets.leakage import (
     LeakageExample,
@@ -37,6 +43,7 @@ def run_phase_a_dataset_factory(
     output_dir: Path,
     seed_path: Path = DEFAULT_SYNTHETIC_SEED,
     protected_seed_path: Path = DEFAULT_PROTECTED_SEED,
+    case_cache_dir: Path | None = None,
 ) -> dict[str, object]:
     seed_bytes = seed_path.read_bytes()
     protected_bytes = protected_seed_path.read_bytes()
@@ -57,6 +64,20 @@ def run_phase_a_dataset_factory(
     exporter = PhaseAFixtureExporter(workspace)
     reference = PhaseAReferenceValidator(workspace)
     adapter = PhaseAResidualAdapter()
+    cache_root = (
+        case_cache_dir.expanduser().resolve()
+        if case_cache_dir is not None
+        else None
+    )
+    if cache_root is not None:
+        cache_root.mkdir(parents=True, exist_ok=True)
+    cache_hits = 0
+    cache_misses = 0
+    reference_cache_hits = 0
+    reference_cache_misses = 0
+    source_id_prefix = str(
+        seed.get("source_id_prefix") or "synthetic-train-dev-v1"
+    )
 
     rows: list[dict[str, object]] = []
     case_results: list[dict[str, object]] = []
@@ -81,11 +102,17 @@ def run_phase_a_dataset_factory(
             "snapshot_revision": _required_text(scene_raw, "snapshot_revision"),
             "facts": list(_sequence_mapping(scene_raw, "facts")),
         }
-        receipt = exporter.export(
+        receipt, cache_hit = _cached_export(
+            exporter=exporter,
             repository=frankenhomie_repository,
-            ref=target_commit,
+            target_commit=target_commit,
             fixture=fixture,
+            cache_root=cache_root,
         )
+        if cache_hit:
+            cache_hits += 1
+        else:
+            cache_misses += 1
         result: dict[str, object] = {
             "case_id": case_id,
             "split": split.value,
@@ -113,6 +140,20 @@ def run_phase_a_dataset_factory(
             )
             continue
 
+        hidden_leaks = _hidden_fixture_leaks(
+            facts=_sequence_mapping(scene_raw, "facts"),
+            request=receipt.request,
+        )
+        if hidden_leaks:
+            errors.append(
+                {
+                    "case_id": case_id,
+                    "code": "HIDDEN_FIXTURE_FACT_LEAK",
+                    "detail": hidden_leaks,
+                }
+            )
+            continue
+
         expected = _proposal_from_author_label(raw_case)
         validation = adapter.validate_proposal(receipt.request, expected)
         if not validation.accepted:
@@ -125,12 +166,18 @@ def run_phase_a_dataset_factory(
             )
             continue
 
-        pinned = reference.validate(
+        pinned, reference_cache_hit = _cached_reference_validation(
+            reference=reference,
             repository=frankenhomie_repository,
-            ref=target_commit,
+            target_commit=target_commit,
             request=receipt.request,
             proposal=expected,
+            cache_root=cache_root,
         )
+        if reference_cache_hit:
+            reference_cache_hits += 1
+        else:
+            reference_cache_misses += 1
         result["reference_status"] = pinned.status
         result["reference_error_code"] = pinned.error_code
         if pinned.status != "ACCEPTED":
@@ -146,7 +193,7 @@ def run_phase_a_dataset_factory(
         row: dict[str, object] = {
             "example_id": case_id,
             "split": split.value,
-            "source_id": f"synthetic-train-dev-v1:{case_id}",
+            "source_id": f"{source_id_prefix}:{case_id}",
             "lineage_group": _required_text(raw_case, "lineage_group"),
             "request": receipt.request,
             "expected": expected,
@@ -221,6 +268,13 @@ def run_phase_a_dataset_factory(
         "protected_language_leakage": language_report.to_dict(),
         "case_results": case_results,
         "errors": errors,
+        "case_cache": {
+            "enabled": cache_root is not None,
+            "export_hits": cache_hits,
+            "export_misses": cache_misses,
+            "reference_hits": reference_cache_hits,
+            "reference_misses": reference_cache_misses,
+        },
         "production_data": False,
         "transcript_derived": False,
         "trainer_visible_splits": ["TRAIN", "DEV"],
@@ -241,6 +295,308 @@ def run_phase_a_dataset_factory(
         encoding="utf-8",
     )
     return factory_receipt
+
+
+def _cached_export(
+    *,
+    exporter: PhaseAFixtureExporter,
+    repository: Path,
+    target_commit: str,
+    fixture: Mapping[str, object],
+    cache_root: Path | None,
+) -> tuple[PhaseAFixtureExportReceipt, bool]:
+    input_sha = hashlib.sha256(
+        canonical_json(fixture).encode("utf-8")
+    ).hexdigest()
+    cache_path = (
+        cache_root / f"{target_commit[:12]}-{input_sha}.json"
+        if cache_root is not None
+        else None
+    )
+    if cache_path is not None and cache_path.is_file():
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        if not isinstance(cached, dict):
+            raise ValueError("Phase A case cache entry must be a JSON object")
+        if cached.get("schema") != "ml-lab-phase-a-factory-case-cache/1":
+            raise ValueError("Unsupported Phase A case cache schema")
+        if cached.get("input_sha256") != input_sha:
+            raise ValueError("Phase A case cache input hash mismatch")
+        if cached.get("target_commit") != target_commit:
+            raise ValueError("Phase A case cache target commit mismatch")
+        raw_receipt = cached.get("receipt")
+        if not isinstance(raw_receipt, dict):
+            raise ValueError("Phase A case cache receipt must be an object")
+        receipt = _receipt_from_cache(raw_receipt)
+        _validate_cached_receipt(
+            receipt,
+            target_commit=target_commit,
+            fixture_id=str(fixture["fixture_id"]),
+        )
+        return receipt, True
+
+    receipt = exporter.export(
+        repository=repository,
+        ref=target_commit,
+        fixture=fixture,
+    )
+    if cache_path is not None:
+        payload = {
+            "schema": "ml-lab-phase-a-factory-case-cache/1",
+            "input_sha256": input_sha,
+            "target_commit": target_commit,
+            "fixture_id": fixture["fixture_id"],
+            "receipt": _receipt_to_cache(receipt),
+        }
+        cache_path.write_bytes(
+            (canonical_json(payload) + "\n").encode("utf-8")
+        )
+    return receipt, False
+
+
+def _cached_reference_validation(
+    *,
+    reference: PhaseAReferenceValidator,
+    repository: Path,
+    target_commit: str,
+    request: Mapping[str, object],
+    proposal: Mapping[str, object],
+    cache_root: Path | None,
+) -> tuple[ReferenceValidationReceipt, bool]:
+    request_sha = hashlib.sha256(
+        canonical_json(request).encode("utf-8")
+    ).hexdigest()
+    proposal_sha = hashlib.sha256(
+        canonical_json(proposal).encode("utf-8")
+    ).hexdigest()
+    validation_key = hashlib.sha256(
+        f"{target_commit}:{request_sha}:{proposal_sha}".encode()
+    ).hexdigest()
+    cache_path = (
+        cache_root / "reference" / f"{validation_key}.json"
+        if cache_root is not None
+        else None
+    )
+    if cache_path is not None and cache_path.is_file():
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        if not isinstance(cached, dict):
+            raise ValueError("Phase A reference cache entry must be an object")
+        if cached.get("schema") != "ml-lab-phase-a-reference-cache/1":
+            raise ValueError("Unsupported Phase A reference cache schema")
+        raw_receipt = cached.get("receipt")
+        if not isinstance(raw_receipt, dict):
+            raise ValueError("Phase A reference cache receipt must be an object")
+        receipt = _reference_receipt_from_cache(raw_receipt)
+        if (
+            receipt.commit_sha != target_commit
+            or receipt.request_sha256 != request_sha
+            or receipt.proposal_sha256 != proposal_sha
+            or receipt.contract_version != "semantic-residual-v2"
+        ):
+            raise ValueError("Phase A reference cache identity mismatch")
+        return receipt, True
+
+    receipt = reference.validate(
+        repository=repository,
+        ref=target_commit,
+        request=request,
+        proposal=proposal,
+    )
+    if cache_path is not None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema": "ml-lab-phase-a-reference-cache/1",
+            "target_commit": target_commit,
+            "request_sha256": request_sha,
+            "proposal_sha256": proposal_sha,
+            "receipt": _reference_receipt_to_cache(receipt),
+        }
+        cache_path.write_bytes(
+            (canonical_json(payload) + "\n").encode("utf-8")
+        )
+    return receipt, False
+
+
+def _reference_receipt_to_cache(
+    receipt: ReferenceValidationReceipt,
+) -> dict[str, object]:
+    return {
+        "status": receipt.status,
+        "commit_sha": receipt.commit_sha,
+        "contract_version": receipt.contract_version,
+        "request_sha256": receipt.request_sha256,
+        "proposal_sha256": receipt.proposal_sha256,
+        "validator": receipt.validator,
+        "fresh_process": receipt.fresh_process,
+        "authority_mutation_allowed": receipt.authority_mutation_allowed,
+        "error_code": receipt.error_code,
+        "error_message": receipt.error_message,
+        "receipt_artifact_digest": receipt.receipt_artifact_digest,
+    }
+
+
+def _reference_receipt_from_cache(
+    value: Mapping[str, object],
+) -> ReferenceValidationReceipt:
+    return ReferenceValidationReceipt(
+        status=str(value["status"]),
+        commit_sha=str(value["commit_sha"]),
+        contract_version=str(value["contract_version"]),
+        request_sha256=str(value["request_sha256"]),
+        proposal_sha256=str(value["proposal_sha256"]),
+        validator=str(value["validator"]),
+        fresh_process=value.get("fresh_process") is True,
+        authority_mutation_allowed=value.get("authority_mutation_allowed") is True,
+        error_code=(
+            str(value["error_code"])
+            if value.get("error_code") is not None
+            else None
+        ),
+        error_message=(
+            str(value["error_message"])
+            if value.get("error_message") is not None
+            else None
+        ),
+        receipt_artifact_digest=str(value["receipt_artifact_digest"]),
+    )
+
+
+def _receipt_to_cache(
+    receipt: PhaseAFixtureExportReceipt,
+) -> dict[str, object]:
+    return {
+        "status": receipt.status,
+        "commit_sha": receipt.commit_sha,
+        "contract_version": receipt.contract_version,
+        "fixture_id": receipt.fixture_id,
+        "fixture_sha256": receipt.fixture_sha256,
+        "route": receipt.route,
+        "failed_deterministic_stage": receipt.failed_deterministic_stage,
+        "request_sha256": receipt.request_sha256,
+        "request": receipt.request,
+        "fresh_process": receipt.fresh_process,
+        "ephemeral_sqlite_only": receipt.ephemeral_sqlite_only,
+        "network_access_allowed": receipt.network_access_allowed,
+        "resolver_dispatch_available": receipt.resolver_dispatch_available,
+        "authority_mutation_allowed": receipt.authority_mutation_allowed,
+        "error_code": receipt.error_code,
+        "error_message": receipt.error_message,
+        "receipt_artifact_digest": receipt.receipt_artifact_digest,
+    }
+
+
+def _receipt_from_cache(
+    value: Mapping[str, object],
+) -> PhaseAFixtureExportReceipt:
+    request_raw = value.get("request")
+    if request_raw is not None and not isinstance(request_raw, dict):
+        raise ValueError("Cached Phase A request must be an object")
+    return PhaseAFixtureExportReceipt(
+        status=str(value["status"]),
+        commit_sha=str(value["commit_sha"]),
+        contract_version=str(value["contract_version"]),
+        fixture_id=str(value["fixture_id"]),
+        fixture_sha256=str(value["fixture_sha256"]),
+        route=(str(value["route"]) if value.get("route") is not None else None),
+        failed_deterministic_stage=(
+            str(value["failed_deterministic_stage"])
+            if value.get("failed_deterministic_stage") is not None
+            else None
+        ),
+        request_sha256=(
+            str(value["request_sha256"])
+            if value.get("request_sha256") is not None
+            else None
+        ),
+        request=(
+            {str(key): item for key, item in request_raw.items()}
+            if isinstance(request_raw, dict)
+            else None
+        ),
+        fresh_process=value.get("fresh_process") is True,
+        ephemeral_sqlite_only=value.get("ephemeral_sqlite_only") is True,
+        network_access_allowed=value.get("network_access_allowed") is True,
+        resolver_dispatch_available=value.get("resolver_dispatch_available") is True,
+        authority_mutation_allowed=value.get("authority_mutation_allowed") is True,
+        error_code=(
+            str(value["error_code"])
+            if value.get("error_code") is not None
+            else None
+        ),
+        error_message=(
+            str(value["error_message"])
+            if value.get("error_message") is not None
+            else None
+        ),
+        receipt_artifact_digest=str(value["receipt_artifact_digest"]),
+    )
+
+
+def _validate_cached_receipt(
+    receipt: PhaseAFixtureExportReceipt,
+    *,
+    target_commit: str,
+    fixture_id: str,
+) -> None:
+    if receipt.commit_sha != target_commit:
+        raise ValueError("Cached Phase A receipt commit mismatch")
+    if receipt.contract_version != "semantic-residual-v2":
+        raise ValueError("Cached Phase A receipt contract mismatch")
+    if receipt.fixture_id != fixture_id:
+        raise ValueError("Cached Phase A receipt fixture mismatch")
+    if receipt.request is None:
+        if receipt.request_sha256 is not None:
+            raise ValueError("Cached missing request cannot have a request hash")
+        return
+    PhaseAResidualAdapter().validate_exported_request(receipt.request)
+    request_sha = hashlib.sha256(
+        canonical_json(receipt.request).encode("utf-8")
+    ).hexdigest()
+    if request_sha != receipt.request_sha256:
+        raise ValueError("Cached Phase A request hash mismatch")
+
+
+def _hidden_fixture_leaks(
+    *,
+    facts: Sequence[Mapping[str, object]],
+    request: Mapping[str, object],
+) -> list[dict[str, str]]:
+    visible_strings: set[str] = set()
+    context = request.get("context")
+    if isinstance(context, Mapping):
+        visible_strings.update(_all_strings(context))
+    assessment = request.get("assessment")
+    if isinstance(assessment, Mapping):
+        candidates = assessment.get("candidates")
+        if candidates is not None:
+            visible_strings.update(_all_strings(candidates))
+    family_slots = request.get("family_slots")
+    if family_slots is not None:
+        visible_strings.update(_all_strings(family_slots))
+    leaks: list[dict[str, str]] = []
+    for fact in facts:
+        if fact.get("visibility") != "GM_ONLY":
+            continue
+        key = fact.get("key")
+        if isinstance(key, str) and key in visible_strings:
+            leaks.append({"kind": "KEY", "value": key})
+        value = fact.get("value")
+        if isinstance(value, str) and value.strip() and value in visible_strings:
+            leaks.append({"kind": "VALUE", "value": value})
+    return leaks
+
+
+def _all_strings(value: object) -> set[str]:
+    strings: set[str] = set()
+    if isinstance(value, str):
+        strings.add(value)
+    elif isinstance(value, Mapping):
+        for key, item in value.items():
+            strings.add(str(key))
+            strings.update(_all_strings(item))
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        for item in value:
+            strings.update(_all_strings(item))
+    return strings
 
 
 def _proposal_from_author_label(case: Mapping[str, object]) -> dict[str, object]:

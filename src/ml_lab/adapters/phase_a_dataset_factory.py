@@ -12,6 +12,7 @@ from ml_lab.adapters.phase_a_reference import PhaseAReferenceValidator
 from ml_lab.core.models import DatasetSplit
 from ml_lab.datasets.leakage import (
     LeakageExample,
+    LeakageReport,
     canonical_json,
     content_fingerprint,
     near_signature,
@@ -142,7 +143,7 @@ def run_phase_a_dataset_factory(
             )
             continue
 
-        row = {
+        row: dict[str, object] = {
             "example_id": case_id,
             "split": split.value,
             "source_id": f"synthetic-train-dev-v1:{case_id}",
@@ -230,12 +231,15 @@ def run_phase_a_dataset_factory(
     payload_sha = hashlib.sha256(
         canonical_json(base_receipt).encode("utf-8")
     ).hexdigest()
-    receipt = {**base_receipt, "payload_sha256": payload_sha}
+    factory_receipt: dict[str, object] = {
+        **base_receipt,
+        "payload_sha256": payload_sha,
+    }
     (output_root / "factory-receipt.json").write_text(
-        canonical_json(receipt) + "\n",
+        canonical_json(factory_receipt) + "\n",
         encoding="utf-8",
     )
-    return receipt
+    return factory_receipt
 
 
 def _proposal_from_author_label(case: Mapping[str, object]) -> dict[str, object]:
@@ -280,7 +284,9 @@ def _proposal_from_author_label(case: Mapping[str, object]) -> dict[str, object]
     }
 
 
-def _full_payload_leakage(rows: Sequence[Mapping[str, object]]):
+def _full_payload_leakage(
+    rows: Sequence[Mapping[str, object]],
+) -> LeakageReport:
     examples = []
     for row in rows:
         split = DatasetSplit(str(row["split"]))
@@ -301,7 +307,7 @@ def _full_payload_leakage(rows: Sequence[Mapping[str, object]]):
 def _language_leakage(
     rows: Sequence[Mapping[str, object]],
     protected: Mapping[str, object],
-):
+) -> LeakageReport:
     examples: list[LeakageExample] = []
     for row in rows:
         request = _mapping(row, "request")

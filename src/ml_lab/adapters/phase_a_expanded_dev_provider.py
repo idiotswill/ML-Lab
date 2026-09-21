@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+import json
 from pathlib import Path
 
 from ml_lab.adapters.phase_a_expanded_bakeoff import (
@@ -30,8 +30,6 @@ def run_expanded_phase_a_dev_provider(
     workspace = Workspace.open(workspace_path)
     freeze_path = workspace.root / "phase-a-expanded-freeze-receipt.json"
     freeze_bytes = freeze_path.read_bytes()
-    import json
-
     freeze = json.loads(freeze_bytes)
     if not isinstance(freeze, dict):
         raise ValueError("Expanded Phase A freeze receipt must be an object")

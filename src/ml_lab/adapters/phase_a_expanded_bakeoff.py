@@ -5,7 +5,7 @@ import json
 import platform
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from ml_lab.adapters.phase_a import (
@@ -30,7 +30,7 @@ from ml_lab.datasets.service import DatasetService
 from ml_lab.evaluation.phase_a import make_phase_a_case_evaluator
 from ml_lab.evaluation.phase_a_metrics import summarize_phase_a_experiment
 from ml_lab.evaluation.runners import evaluate_packaged_experiment
-from ml_lab.evaluation.service import EvaluationService
+from ml_lab.evaluation.service import EvaluationService, EvaluationSummary
 from ml_lab.experiments.service import ExperimentService
 from ml_lab.storage.workspace import Workspace
 from ml_lab.trainers.service import (
@@ -228,7 +228,7 @@ def _run_baseline(
     snapshot_id: str,
     trainer_id: str,
     display_name: str,
-    predictor,
+    predictor: Callable[[Mapping[str, object]], Mapping[str, object]],
     reference: PhaseAReferenceValidator,
     repository: Path,
     commit_sha: str,
@@ -375,7 +375,7 @@ def _report(
     trainer_id: str,
     display_name: str,
     trained: bool,
-    summary,
+    summary: EvaluationSummary,
     training_job: Mapping[str, object] | None,
 ) -> dict[str, object]:
     experiment = ExperimentService(workspace).get(experiment_id)

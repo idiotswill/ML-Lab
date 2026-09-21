@@ -162,11 +162,32 @@ class _FakeExporter:
 
 
 class _FakeReference:
+    calls = 0
+
     def __init__(self, _workspace: Workspace):
         pass
 
-    def validate(self, **_kwargs):
-        return SimpleNamespace(status="ACCEPTED", error_code=None)
+    def validate(self, **kwargs):
+        type(self).calls += 1
+        request = kwargs["request"]
+        proposal = kwargs["proposal"]
+        return factory_module.ReferenceValidationReceipt(
+            status="ACCEPTED",
+            commit_sha=str(kwargs["ref"]),
+            contract_version="semantic-residual-v2",
+            request_sha256=hashlib.sha256(
+                factory_module.canonical_json(request).encode("utf-8")
+            ).hexdigest(),
+            proposal_sha256=hashlib.sha256(
+                factory_module.canonical_json(proposal).encode("utf-8")
+            ).hexdigest(),
+            validator="fake-reference",
+            fresh_process=True,
+            authority_mutation_allowed=False,
+            error_code=None,
+            error_message=None,
+            receipt_artifact_digest="reference-artifact",
+        )
 
 
 def _write_seed(path: Path, train_text: str, dev_text: str) -> Path:
@@ -255,6 +276,7 @@ def _install_fakes(monkeypatch: pytest.MonkeyPatch) -> None:
     _FakeExporter.fail = False
     _FakeExporter.calls = 0
     _FakeExporter.leak_hidden = False
+    _FakeReference.calls = 0
     monkeypatch.setattr(factory_module, "PhaseAFixtureExporter", _FakeExporter)
     monkeypatch.setattr(factory_module, "PhaseAReferenceValidator", _FakeReference)
 
@@ -411,10 +433,13 @@ def test_dataset_factory_reuses_exact_case_cache(
     assert first["ok"] is True
     assert first["case_cache"] == {
         "enabled": True,
-        "hits": 0,
-        "misses": 2,
+        "export_hits": 0,
+        "export_misses": 2,
+        "reference_hits": 0,
+        "reference_misses": 2,
     }
     assert _FakeExporter.calls == 2
+    assert _FakeReference.calls == 2
 
     second = run_phase_a_dataset_factory(
         workspace=workspace,
@@ -427,10 +452,13 @@ def test_dataset_factory_reuses_exact_case_cache(
     assert second["ok"] is True
     assert second["case_cache"] == {
         "enabled": True,
-        "hits": 2,
-        "misses": 0,
+        "export_hits": 2,
+        "export_misses": 0,
+        "reference_hits": 2,
+        "reference_misses": 0,
     }
     assert _FakeExporter.calls == 2
+    assert _FakeReference.calls == 2
     assert (
         tmp_path / "first" / "phase-a-train-dev-v1.jsonl"
     ).read_bytes() == (
@@ -475,10 +503,13 @@ def test_dataset_factory_cache_invalidates_only_changed_fixture(
 
     assert result["case_cache"] == {
         "enabled": True,
-        "hits": 1,
-        "misses": 1,
+        "export_hits": 1,
+        "export_misses": 1,
+        "reference_hits": 1,
+        "reference_misses": 1,
     }
     assert _FakeExporter.calls == 3
+    assert _FakeReference.calls == 3
 
 
 def test_dataset_factory_blocks_gm_only_fixture_fact_leak(

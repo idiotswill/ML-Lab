@@ -22,7 +22,6 @@ from ml_lab.experiments.service import ExperimentService
 from ml_lab.storage.workspace import Workspace
 from ml_lab.trainers.service import TrainingState
 
-
 TARGET_COMMIT = "1ff3e2155a3c2d2b316023e9933edf3a6d53697f"
 
 

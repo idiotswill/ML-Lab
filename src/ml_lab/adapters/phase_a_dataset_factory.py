@@ -201,8 +201,9 @@ def run_phase_a_dataset_factory(
             canonical_json(row) + "\n"
             for row in ordered_rows
         )
-        dataset_path.write_text(serialized, encoding="utf-8")
-        dataset_sha = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+        dataset_bytes = serialized.encode("utf-8")
+        dataset_path.write_bytes(dataset_bytes)
+        dataset_sha = hashlib.sha256(dataset_path.read_bytes()).hexdigest()
 
     base_receipt: dict[str, object] = {
         "schema": "ml-lab-phase-a-dataset-factory-receipt/1",

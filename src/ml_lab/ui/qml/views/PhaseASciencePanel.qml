@@ -90,7 +90,9 @@ Panel {
 
             Text {
                 Layout.fillWidth: true
-                text: "Rerun baselines on this experiment's same frozen dataset + contract."
+                text: scienceController.developmentSplit ?
+                          "DEV is development evidence. Metrics are shown here, but protected baselines stay on TEST/REDTEAM." :
+                          "Rerun baselines on this experiment's same frozen dataset + contract."
                 color: Theme.muted
                 font.pixelSize: 10
                 wrapMode: Text.WordWrap

@@ -209,7 +209,7 @@ def run_phase_a_baselines(
     reports = []
     for baseline in (V2DeterministicAbstention(), V2BoundedLexical(registry)):
         rows = []
-        contract_failures = false_commitments = correct = 0
+        contract_failures = false_commitments = correct = decision_correct = 0
         resolved = correct_resolved = expected_resolves = 0
         expected_asks = correct_asks = 0
         for case_id in sorted(cases_by_id):
@@ -232,6 +232,8 @@ def run_phase_a_baselines(
             if actual_decision == "RESOLVE" and expected_decision != "RESOLVE":
                 false_commitments += 1
 
+            is_decision_correct = contract_ok and actual_decision == expected_decision
+            decision_correct += int(is_decision_correct)
             is_correct = contract_ok and _matches_label(proposal, label)
             correct += int(is_correct)
             correct_resolved += int(
@@ -253,6 +255,7 @@ def run_phase_a_baselines(
                     "actual": proposal,
                     "contract_ok": contract_ok,
                     "contract_error": validation.error_code,
+                    "decision_correct": is_decision_correct,
                     "correct": is_correct,
                 }
             )
@@ -263,7 +266,10 @@ def run_phase_a_baselines(
                 "candidate": baseline.name,
                 "case_count": total,
                 "correct": correct,
-                "decision_accuracy": round(correct / total, 4) if total else None,
+                "decision_accuracy": (
+                    round(decision_correct / total, 4) if total else None
+                ),
+                "semantic_accuracy": round(correct / total, 4) if total else None,
                 "resolved": resolved,
                 "useful_resolution_coverage": (
                     round(correct_resolved / expected_resolves, 4)

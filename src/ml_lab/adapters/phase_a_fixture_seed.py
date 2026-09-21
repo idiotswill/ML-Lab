@@ -4,6 +4,7 @@ import hashlib
 import json
 import tempfile
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
 
 from ml_lab.adapters.phase_a_fixture_export import PhaseAFixtureExporter
@@ -37,6 +38,9 @@ def run_phase_a_fixture_seed_evidence(
 
     evidence_rows: list[dict[str, object]] = []
     mismatches: list[dict[str, object]] = []
+    status_counts: Counter[str] = Counter()
+    split_counts: Counter[str] = Counter()
+    request_count = 0
 
     with tempfile.TemporaryDirectory(prefix="ml-lab-phase-a-fixture-evidence-") as temp:
         workspace = Workspace.create(Path(temp) / "workspace")
@@ -76,6 +80,10 @@ def run_phase_a_fixture_seed_evidence(
                 "permitted_decisions": raw_case["expected_permitted_decisions"],
             }
             mismatch = _mismatch(expected, actual)
+            status_counts[receipt.status] += 1
+            split_counts[str(raw_case["split"])] += 1
+            if receipt.request is not None:
+                request_count += 1
             row = {
                 "case_id": raw_case["case_id"],
                 "split": raw_case["split"],
@@ -96,11 +104,6 @@ def run_phase_a_fixture_seed_evidence(
                     }
                 )
 
-    status_counts = Counter(str(row["actual"]["status"]) for row in evidence_rows)
-    split_counts = Counter(str(row["split"]) for row in evidence_rows)
-    request_count = sum(
-        row["actual"]["request"] is not None for row in evidence_rows
-    )
     base_payload: dict[str, object] = {
         "schema": "ml-lab-phase-a-fixture-evidence/1",
         "ok": not mismatches,
@@ -144,15 +147,17 @@ def _case_fixture(
 
 
 def _mismatch(
-    expected: dict[str, object],
-    actual: dict[str, object],
+    expected: Mapping[str, object],
+    actual: Mapping[str, object],
 ) -> dict[str, object] | None:
     fields = ("status", "route", "failed_deterministic_stage")
-    differences = {
-        field: {"expected": expected[field], "actual": actual[field]}
-        for field in fields
-        if expected[field] != actual[field]
-    }
+    differences: dict[str, object] = {}
+    for field in fields:
+        if expected[field] != actual[field]:
+            differences[field] = {
+                "expected": expected[field],
+                "actual": actual[field],
+            }
 
     permitted = expected["permitted_decisions"]
     request = actual["request"]

@@ -26,6 +26,7 @@ from ml_lab.evaluation.service import CaseEvaluator, CaseOutcome
 from ml_lab.storage.workspace import Workspace
 
 PHASE_A_LOCAL_PROVIDER_PREFIX = "phase-a-local-provider-v2"
+PHASE_A_LOCAL_PROVIDER_DEV_PREFIX = "phase-a-local-provider-dev-v2"
 
 
 def local_provider_baseline_id(
@@ -156,6 +157,107 @@ def run_phase_a_local_provider_baseline(
         splits=(DatasetSplit.TEST, DatasetSplit.REDTEAM),
         cancelled=cancelled,
     )
+
+
+def run_phase_a_local_provider_dev_baseline(
+    workspace: Workspace,
+    *,
+    project_id: str,
+    dataset_id: str,
+    contract_snapshot_id: str,
+    model: str,
+    endpoint: str,
+    timeout_seconds: float = 120.0,
+    cancelled: Callable[[], bool] | None = None,
+) -> BaselineRunResult:
+    config = local_provider_config(
+        model=model,
+        endpoint=endpoint,
+        timeout_seconds=timeout_seconds,
+    )
+    config_model = cast(str, config["model"])
+    config_endpoint = cast(str, config["endpoint"])
+    config_timeout = cast(float, config["timeout_seconds"])
+    digest = hashlib.sha256(canonical_json(config).encode("utf-8")).hexdigest()[:12]
+    baseline_id = f"{PHASE_A_LOCAL_PROVIDER_DEV_PREFIX}-{digest}"
+
+    snapshots = ContractSnapshotService(workspace)
+    snapshot = snapshots.get(contract_snapshot_id)
+    if snapshot.project_id != project_id:
+        raise ValueError("Pinned contract snapshot belongs to a different project.")
+    if snapshot.adapter_id != PHASE_A_ADAPTER_ID:
+        raise ValueError("DEV provider baseline requires a Phase A contract snapshot.")
+    if snapshot.contract_version != PHASE_A_CONTRACT_VERSION:
+        raise ValueError("Pinned Phase A contract version is incompatible.")
+
+    baseline = BaselineService(workspace)
+    experiment = baseline.create(
+        project_id=project_id,
+        dataset_id=dataset_id,
+        baseline_id=baseline_id,
+        contract_snapshot_id=contract_snapshot_id,
+        config={
+            **config,
+            "adapter_id": PHASE_A_ADAPTER_ID,
+            "contract_version": PHASE_A_CONTRACT_VERSION,
+            "compatibility_signature": snapshot.compatibility_signature,
+            "evaluation_scope": "DEV_ONLY",
+            "protected_evidence": False,
+        },
+        environment={
+            "reference_commit_sha": snapshot.commit_sha,
+            "reference_repository_identity": snapshot.repo_identity,
+            "provider_source": "PINNED_COMMITTED_BYTES",
+            "integration_gate": "NO_GO",
+            "reproducibility": {
+                "mode": "NONDETERMINISTIC",
+                "comparison_policy": "VETO_EXACT_NON_VETO_REPORT_ONLY",
+                "metric_tolerances": {
+                    "contract_failures": 0.0,
+                    "false_commitments": 0.0,
+                    "hidden_or_out_of_envelope": 0.0,
+                    "unsupported_mechanics_authority": 0.0,
+                    "zero_model_route_violations": 0.0,
+                },
+            },
+        },
+    )
+    runner = PhaseALocalProviderRunner(
+        workspace,
+        repository=Path(snapshot.repo_path),
+        ref=snapshot.commit_sha,
+        model=config_model,
+        endpoint=config_endpoint,
+        timeout_seconds=config_timeout,
+    )
+    reference = PhaseAReferenceValidator(workspace)
+    evaluator = _provider_evaluator(
+        runner,
+        reference_check=lambda request, proposal: reference.validate(
+            repository=Path(snapshot.repo_path),
+            ref=snapshot.commit_sha,
+            request=request,
+            proposal=proposal,
+        ),
+        reference_preflight=lambda request: reference.preflight(
+            repository=Path(snapshot.repo_path),
+            ref=snapshot.commit_sha,
+            request=request,
+        ),
+    )
+    result = baseline.run(
+        experiment.id,
+        evaluator=evaluator,
+        splits=(DatasetSplit.DEV,),
+        cancelled=cancelled,
+    )
+
+    evaluation = baseline.evaluation
+    if evaluation.case_count(result.experiment.id, DatasetSplit.TEST) != 0:
+        raise RuntimeError("DEV provider probe created TEST evidence")
+    if evaluation.case_count(result.experiment.id, DatasetSplit.REDTEAM) != 0:
+        raise RuntimeError("DEV provider probe created REDTEAM evidence")
+    return result
 
 
 def completed_local_provider_baseline(

@@ -19,6 +19,7 @@ from ml_lab.adapters.phase_a_provider import (
 from ml_lab.baselines.phase_a_provider import (
     local_provider_baseline_id,
     run_phase_a_local_provider_baseline,
+    run_phase_a_local_provider_dev_baseline,
 )
 from ml_lab.contracts.snapshot import ContractFileSpec, ContractSnapshotService
 from ml_lab.core.models import (
@@ -583,3 +584,77 @@ def test_provider_experiment_remains_an_ordinary_immutable_baseline(tmp_path: Pa
         "unsupported_mechanics_authority": 0.0,
         "zero_model_route_violations": 0.0,
     }
+
+
+
+def test_local_provider_dev_baseline_never_opens_protected_splits(
+    tmp_path: Path,
+) -> None:
+    repo, commit = _fake_repo(tmp_path)
+    workspace = Workspace.create(tmp_path / "workspace-dev")
+    project = workspace.create_project("Phase A DEV", adapter_id=PHASE_A_ADAPTER_ID)
+    snapshot = _snapshot(workspace, project.id, repo, commit)
+    datasets = DatasetService(workspace)
+    dataset = datasets.create(
+        project.id,
+        "local-provider-dev",
+        contract_snapshot_id=snapshot.id,
+    )
+    datasets.add_example(
+        dataset.id,
+        ValidatedExampleInput(
+            example_id="dev-harm",
+            split=DatasetSplit.DEV,
+            source_id="synthetic:dev-harm",
+            lineage_group="lineage:dev-harm",
+            payload={"request": _request(declaration="I smash Mara now.")},
+            label=_expected(),
+            tags=("local-provider", "dev"),
+        ),
+    )
+    datasets.add_example(
+        dataset.id,
+        ValidatedExampleInput(
+            example_id="test-harm",
+            split=DatasetSplit.TEST,
+            source_id="synthetic:test-harm",
+            lineage_group="lineage:test-harm",
+            payload={"request": _request(declaration="I smash Mara later.")},
+            label=_expected(),
+            tags=("local-provider", "test"),
+        ),
+    )
+    datasets.add_example(
+        dataset.id,
+        ValidatedExampleInput(
+            example_id="redteam-harm",
+            split=DatasetSplit.REDTEAM,
+            source_id="synthetic:redteam-harm",
+            lineage_group="lineage:redteam-harm",
+            payload={"request": _request(declaration="I smash Mara carefully.")},
+            label=_expected(),
+            tags=("local-provider", "redteam"),
+        ),
+    )
+    datasets.freeze(dataset.id)
+
+    result = run_phase_a_local_provider_dev_baseline(
+        workspace,
+        project_id=project.id,
+        dataset_id=dataset.id,
+        contract_snapshot_id=snapshot.id,
+        model="fixture",
+        endpoint="http://127.0.0.1:11434/v1/chat/completions",
+        timeout_seconds=5,
+    )
+
+    assert result.experiment.status is ExperimentStatus.COMPLETED
+    assert result.experiment.trainer_id.startswith(
+        "baseline:phase-a-local-provider-dev-v2-"
+    )
+    assert len(result.summaries) == 1
+    assert result.summaries[0].split is DatasetSplit.DEV
+    evaluation = EvaluationService(workspace)
+    assert evaluation.case_count(result.experiment.id, DatasetSplit.DEV) == 1
+    assert evaluation.case_count(result.experiment.id, DatasetSplit.TEST) == 0
+    assert evaluation.case_count(result.experiment.id, DatasetSplit.REDTEAM) == 0

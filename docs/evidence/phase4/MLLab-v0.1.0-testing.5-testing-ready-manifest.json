@@ -1,0 +1,71 @@
+{
+  "application": {
+    "name": "Frankenhomie ML Lab",
+    "platform": "windows-x64",
+    "release_label": "v0.1.0-testing.5",
+    "version": "0.1.0-testing.5"
+  },
+  "artifacts": {
+    "installer_exe": {
+      "filename": "MLLab-Setup-v0.1.0-testing.5-x64.exe",
+      "sha256": "d13bb84f477b439f16ae48aa1432796326e684cecfec0af75fda95233d8ca9ab",
+      "size": 113474771
+    },
+    "portable_zip": {
+      "filename": "MLLab-v0.1.0-testing.5-windows-x64-portable.zip",
+      "sha256": "e095fe2b9e4802178cf3c39222d0bb1568ccfcf38b8431273a8d6a080d0a9bc0",
+      "size": 168991319
+    }
+  },
+  "candidate_build": {
+    "executable_sha256": "4af03345b9450a70429d68ceffce5f484bfba582043cc1d6afefe5fee2f89a9e",
+    "executable_size": 12286464,
+    "manifest_filename": "MLLab-v0.1.0-testing.5-build-manifest.json",
+    "manifest_sha256": "b571ae22e4796cf6fd496817b3413da201e99b036dc8e97a706ce457fcbff4f2"
+  },
+  "integration_gate": "NO_GO",
+  "model_integration_approved": false,
+  "promotion_scope": "PRODUCT_TESTING_ONLY",
+  "release_kind": "testing_ready_windows_release",
+  "representative_performance": {
+    "hard_checks": {
+      "background_import_no_over_100ms_stall": true,
+      "bounded_project_paging": true,
+      "cancellation_visible_within_1s": true,
+      "idle_working_set_under_300mb": true,
+      "ordinary_navigation_no_repeatable_over_100ms_stall": true,
+      "startup_under_4s": true,
+      "worker_load_no_over_100ms_stall": true
+    },
+    "hardware": {
+      "architecture": "AMD64",
+      "cpu": "AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+      "disk_free_bytes": 76592459776,
+      "disk_total_bytes": 509341593600,
+      "logical_cpus": 12,
+      "nvidia_gpu": "NVIDIA GeForce RTX 4050 Laptop GPU",
+      "nvidia_vram_mb": 6141,
+      "os": "Windows",
+      "os_version": "10.0.26200",
+      "ram_bytes": 16435761152
+    },
+    "instrumentation_checks": {
+      "background_import_completed_and_sampled": true,
+      "bounded_paging_observed": true,
+      "cancellation_observed": true,
+      "compiled_executable_fingerprinted": true,
+      "idle_memory_measured": true,
+      "ordinary_navigation_repeatability_sampled": true,
+      "ordinary_navigation_sampled": true,
+      "startup_interactive_signal": true,
+      "worker_load_sampled": true
+    },
+    "receipt_filename": "MLLab-v0.1.0-testing.5-representative-performance.json",
+    "receipt_sha256": "63fb4aeef5b9191aaa5e6bcf84191d9b394aab6cf1fdf3124f89058786cd0f72"
+  },
+  "schema_version": 1,
+  "source": {
+    "commit": "6c923c528117348639c2d6823bc6fd3ff5fa863e"
+  },
+  "testing_ready": true
+}

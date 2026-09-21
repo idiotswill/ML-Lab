@@ -1,10 +1,10 @@
 # Phase 4 Exit Audit
 
-Status: **PENDING — REPRESENTATIVE WINDOWS HARDWARE PERFORMANCE EVIDENCE**
+Status: **PASS — v0.1.0-testing.5 PRODUCT TESTING READY**
 
-Phase 4 is the first phase eligible to produce a normal user-testing build. All automated, packaging, clean-machine, reliability, UX, scientific/reproducibility, and Frankenhomie-safety implementation gates have current evidence. The remaining release gate is the full representative-machine performance capture defined in `docs/QUALITY_GATES.md`.
+Phase 4 is complete. All automated, packaging, clean-machine, reliability, UX, scientific/reproducibility, Frankenhomie-safety, representative-performance, and fail-closed promotion gates have current evidence.
 
-This document is intentionally not a PASS declaration yet.
+`v0.1.0-testing.5` is authorized for **product testing only**. This does not authorize model integration into Frankenhomie.
 
 ## Authority boundary
 
@@ -43,7 +43,7 @@ No Phase A residual-semantic contract drift was found during the current product
 | Scientific/reproducibility | PASS | deterministic retraining proof, explicit nondeterministic tolerance policy, all split hashes, TRAIN/DEV-only reproduction inputs |
 | Frankenhomie safety | PASS | pinned preflight before model calls, no DB/network/resolver access, zero-model-route measurement, unsupported-authority veto, permanent integration NO_GO |
 | Performance instrumentation | PASS | compiled candidate measures interactive startup, idle RAM, UI stalls, bounded paging, background import, CPU-heavy worker navigation, cancellation visibility |
-| Representative physical-Windows performance | **PENDING** | full 100k gate must be run on the complete candidate on representative modern Windows hardware |
+| Representative physical-Windows performance | **PASS** | testing.5 full receipt: 100k rows, 20k import, zero >100 ms import stalls, three clean navigation rounds, 1.93 s startup, 125.93 MB idle RAM, 37.43 ms cancellation acknowledgement |
 
 ## Preserved testing.1 physical failure
 
@@ -116,6 +116,69 @@ Testing.4 preserves the authority boundary while removing that contention:
 
 The first automated `testing.4` build at source head `41ae35454d3a0ee3654bf26c2a99c855c8465a98` was not retained as a candidate. CI run `35526657222` passed Ruff, strict mypy, 135 Ubuntu core tests, Windows core, scale, standalone compilation, and the compiled application/performance smoke. The installed clean-machine workflow also reached and passed its normal prepare stage, but the repeated installed UX evidence harness failed at light/125% during temporary-workspace teardown with Windows `WinError 32` on `lab.db`. The QML/controller object graph was still alive when `TemporaryDirectory` attempted deletion. `testing.5` explicitly stops controller timers/services and destroys the QML/controller references before temporary workspace cleanup. This is a harness lifecycle correction only; no performance gate or authority boundary was weakened.
 
+## Testing.5 physical PASS and product promotion
+
+The final physical-machine candidate, `v0.1.0-testing.5`, is the exact compiled candidate from source head:
+
+`6c923c528117348639c2d6823bc6fd3ff5fa863e`
+
+Automated candidate CI:
+
+`35527453293` — **SUCCESS**
+
+Retained candidate artifact:
+
+`MLLab-phase4-testing-candidate-6c923c528117348639c2d6823bc6fd3ff5fa863e`
+
+Artifact digest:
+
+`sha256:6fa00d5df307dad7757ef3e2c8add413fd358842667548b61a3370be49da023f`
+
+The full physical Windows receipt is format version 2, non-smoke, gate-evaluable, and reports `ok: true`, `hard_checks_pass: true`, and `instrumentation_checks_pass: true`.
+
+Exact tested executable:
+
+- filename: `MLLab.exe`;
+- SHA-256: `4af03345b9450a70429d68ceffce5f484bfba582043cc1d6afefe5fee2f89a9e`;
+- size: 12,286,464 bytes.
+
+Representative physical results:
+
+- process start → interactive QML ready: **1932.10 ms** (target ≤2500 ms, hard ≤4000 ms);
+- idle working set: **125.93 MB** (target ≤220 MB, hard ≤300 MB);
+- 100,000 primary examples exercised with exactly **100** page examples materialized;
+- three ordinary-navigation rounds completed with **353 samples**, zero >100 ms GUI stalls, zero >100 ms scheduler delays, maximum GUI event-processing sample **60.71 ms**;
+- 20,000-row background import completed with **759 samples**, zero >100 ms GUI stalls, maximum GUI event-processing sample **92.85 ms**;
+- CPU-heavy worker navigation completed with zero >100 ms stalls and maximum GUI sample **51.87 ms**;
+- cancellation acknowledgement visible in **37.43 ms**, with terminal `CANCELLED`.
+
+Physical receipt SHA-256:
+
+`63fb4aeef5b9191aaa5e6bcf84191d9b394aab6cf1fdf3124f89058786cd0f72`
+
+The fail-closed product promoter then verified the candidate manifest, full receipt schema, every hard/instrumentation check, exact executable hash/size, and exact installer/portable hashes. It copied the tested bytes unchanged and emitted:
+
+`MLLab-v0.1.0-testing.5-testing-ready-manifest.json`
+
+Promotion manifest SHA-256:
+
+`02192d63c258daca77e98c79d1e0c96a789e0ccbab16fb7012b3a141b4f211d9`
+
+Promoted byte identities:
+
+- installer SHA-256: `d13bb84f477b439f16ae48aa1432796326e684cecfec0af75fda95233d8ca9ab`;
+- portable ZIP SHA-256: `e095fe2b9e4802178cf3c39222d0bb1568ccfcf38b8431273a8d6a080d0a9bc0`;
+- candidate build manifest SHA-256: `b571ae22e4796cf6fd496817b3413da201e99b036dc8e97a706ce457fcbff4f2`.
+
+The promotion manifest records:
+
+- `testing_ready: true`;
+- `promotion_scope: PRODUCT_TESTING_ONLY`;
+- `integration_gate: NO_GO`;
+- `model_integration_approved: false`.
+
+The promoted installer and portable archive are byte-for-byte the same artifacts that were tested. No release rebuild occurred.
+
 ## Performance evidence design
 
 The complete candidate includes:
@@ -159,14 +222,16 @@ The resulting release manifest may set `testing_ready: true` only for product te
 
 `INTEGRATION_GATE = NO_GO`
 
-## Remaining closure sequence
+## Closure record
 
-1. Produce a fully green testing-candidate artifact from the current Phase 4 branch.
-2. Run the bundled representative-performance capture once on the intended physical Windows machine.
-3. Preserve the generated JSON receipt.
-4. Run the fail-closed promotion against the exact candidate manifest/artifacts and that receipt.
-5. Verify the final testing-ready release manifest and byte hashes.
-6. Record the exact source head, CI run, candidate artifact digest, physical receipt hash, and promoted release hashes here and in PR #7 / issue #6.
-7. Only then change this audit status to PASS and mark the build `TESTING_READY`.
+Phase 4 closure is complete:
 
-Nothing in this sequence grants Frankenhomie integration approval.
+1. testing.5 candidate CI is fully green;
+2. the complete candidate was exercised on representative physical Windows hardware;
+3. the full receipt was preserved under `docs/evidence/phase4/`;
+4. the fail-closed promoter validated the exact candidate and receipt;
+5. exact installer/portable bytes were promoted without rebuild;
+6. the testing-ready manifest is preserved under `docs/evidence/phase4/`;
+7. this audit is PASS.
+
+Product testing readiness does **not** grant Frankenhomie model integration approval. `INTEGRATION_GATE = NO_GO` remains binding.

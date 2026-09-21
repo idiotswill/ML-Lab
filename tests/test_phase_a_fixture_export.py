@@ -69,7 +69,7 @@ class FakeResult:
         self.assessment = FakeAssessment(reason)
 
 
-def route_player_semantics(*, declaration, provider, **kwargs):
+def route_player_semantics(conn, *, declaration, provider, **kwargs):
     assert kwargs["allowed_action_families"] == ("SEARCH_INSPECT",)
     if declaration.startswith("residual"):
         try:

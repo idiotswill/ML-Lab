@@ -9,6 +9,10 @@ from ml_lab.adapters.phase_a_reference import (
 )
 from ml_lab.core.models import FailureSeverity
 from ml_lab.evaluation.service import CaseEvaluator, CaseOutcome
+from ml_lab.trainers.phase_a_candidate_sparse import (
+    PhaseACandidateSparseModel,
+    predict_phase_a_candidate_sparse,
+)
 from ml_lab.trainers.phase_a_sparse import (
     BoundedPredictionError,
     PhaseASparseModel,
@@ -143,6 +147,19 @@ def make_phase_a_case_evaluator(
         )
 
     return evaluate
+
+
+def make_phase_a_candidate_sparse_evaluator(
+    model: PhaseACandidateSparseModel,
+    *,
+    reference_check: PhaseAReferenceCheck,
+    reference_preflight: PhaseAReferencePreflight | None = None,
+) -> CaseEvaluator:
+    return make_phase_a_case_evaluator(
+        predictor=lambda request: predict_phase_a_candidate_sparse(model, request),
+        reference_check=reference_check,
+        reference_preflight=reference_preflight,
+    )
 
 
 def make_phase_a_sparse_evaluator(

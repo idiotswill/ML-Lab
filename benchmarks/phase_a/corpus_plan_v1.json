@@ -1,0 +1,212 @@
+{
+  "schema": "ml-lab-phase-a-corpus-plan/1",
+  "status": "SYNTHETIC_NON_CANON",
+  "target_frankenhomie_commit": "1ff3e2155a3c2d2b316023e9933edf3a6d53697f",
+  "target_contract": "semantic-residual-v2",
+  "production_data": false,
+  "transcript_derived": false,
+  "actor_id": "tester",
+  "audience": "PC_PRIVATE",
+  "target_counts": {
+    "TRAIN": {"resolve_per_family": 24, "ambiguous": 36, "compound": 36, "zero_model": 0, "total": 240},
+    "DEV": {"resolve_per_family": 6, "ambiguous": 9, "compound": 9, "zero_model": 0, "total": 60},
+    "TEST": {"resolve_per_family": 6, "ambiguous": 9, "compound": 9, "zero_model": 0, "total": 60},
+    "REDTEAM": {"resolve_per_family": 3, "ambiguous": 7, "compound": 8, "zero_model": 24, "total": 60}
+  },
+  "scene_themes": {
+    "TRAIN": ["Amber", "Copper", "Jade", "Silver", "Crimson", "Azure"],
+    "DEV": ["Ivory", "Onyx", "Saffron"],
+    "TEST": ["Violet", "Umber", "Cerulean"],
+    "REDTEAM": ["Obsidian", "Ochre", "Viridian"]
+  },
+  "surface_styles": {
+    "TRAIN": [
+      "I {phrase}.",
+      "I carefully {phrase}.",
+      "With a steady breath, I {phrase}.",
+      "We deliberately {phrase}."
+    ],
+    "DEV": [
+      "I quietly {phrase}.",
+      "Without hesitation, I {phrase}.",
+      "I deliberately {phrase}.",
+      "We carefully {phrase}."
+    ],
+    "TEST": [
+      "With a measured pause, I {phrase}.",
+      "I slowly {phrase}.",
+      "We quietly {phrase}.",
+      "I {phrase}, right now."
+    ],
+    "REDTEAM": [
+      "With a sharp grin, I {phrase}.",
+      "I quickly {phrase}.",
+      "We slowly {phrase}."
+    ]
+  },
+  "resolve_lexicons": {
+    "TRAIN": {
+      "HARM_TARGET": ["maul", "pummel", "batter", "hammer", "thump", "bash"],
+      "MOVE_TRAVEL": ["stride", "advance", "march", "wander", "roam", "drift"],
+      "SEARCH_INSPECT": ["appraise", "survey", "canvass", "peruse", "gauge", "review"],
+      "SPEECH_ONLY": ["address", "confer with", "parley with", "hail", "petition", "brief"],
+      "CAST_SPELL": ["unleash", "channel", "conjure", "project", "manifest", "shape"],
+      "USE_ITEM": ["swig", "imbibe", "gulp", "down", "knock back", "tip back"],
+      "INTERACT_OBJECT": [
+        {"phrase": "unseal {object}", "operation": "OPEN", "kind": "object"},
+        {"phrase": "crack {object} ajar", "operation": "OPEN", "kind": "object"},
+        {"phrase": "seal {object}", "operation": "CLOSE", "kind": "object"},
+        {"phrase": "shut {object}", "operation": "CLOSE", "kind": "object"},
+        {"phrase": "don {item}", "operation": "EQUIP", "kind": "item"},
+        {"phrase": "ready {item}", "operation": "EQUIP", "kind": "item"},
+        {"phrase": "pocket {item}", "operation": "STOW", "kind": "item"},
+        {"phrase": "holster {item}", "operation": "STOW", "kind": "item"},
+        {"phrase": "pass {item} across to {recipient}", "operation": "TRANSFER", "kind": "transfer"},
+        {"phrase": "offer {item} over to {recipient}", "operation": "TRANSFER", "kind": "transfer"}
+      ]
+    },
+    "DEV": {
+      "HARM_TARGET": ["slug", "whack", "deck", "sock", "pound", "rough up"],
+      "MOVE_TRAVEL": ["make for", "hustle toward", "bound toward", "amble toward", "veer toward", "press toward"],
+      "SEARCH_INSPECT": ["assess", "probe", "size up", "vet", "scope out", "parse"],
+      "SPEECH_ONLY": ["consult", "converse with", "entreat", "salute", "counsel", "debrief"],
+      "CAST_SPELL": ["hurl", "release", "weave", "summon", "focus", "spin"],
+      "USE_ITEM": ["drain", "sample", "partake of", "chug", "slug down", "draw deeply from"],
+      "INTERACT_OBJECT": [
+        {"phrase": "prise {object} apart", "operation": "OPEN", "kind": "object"},
+        {"phrase": "spread {object} wide", "operation": "OPEN", "kind": "object"},
+        {"phrase": "fasten {object}", "operation": "CLOSE", "kind": "object"},
+        {"phrase": "secure {object}", "operation": "CLOSE", "kind": "object"},
+        {"phrase": "wear {item}", "operation": "EQUIP", "kind": "item"},
+        {"phrase": "shoulder {item}", "operation": "EQUIP", "kind": "item"},
+        {"phrase": "stash {item}", "operation": "STOW", "kind": "item"},
+        {"phrase": "sling {item} away", "operation": "STOW", "kind": "item"},
+        {"phrase": "present {item} across to {recipient}", "operation": "TRANSFER", "kind": "transfer"}
+      ]
+    },
+    "TEST": {
+      "HARM_TARGET": ["pelt", "bludgeon", "smash", "cuff", "belt", "thrash"],
+      "MOVE_TRAVEL": ["saunter toward", "trek toward", "scamper toward", "glide toward", "trudge toward", "sweep toward"],
+      "SEARCH_INSPECT": ["scrutinize", "sift through", "comb", "catalogue", "scope", "evaluate"],
+      "SPEECH_ONLY": ["beseech", "accost", "implore", "notify", "appeal to", "jaw with"],
+      "CAST_SPELL": ["evoke", "loose", "kindle", "radiate", "form", "voice"],
+      "USE_ITEM": ["toss back", "quench with", "slake myself with", "polish off", "wet my throat with", "finish"],
+      "INTERACT_OBJECT": [
+        {"phrase": "peel {object} ajar", "operation": "OPEN", "kind": "object"},
+        {"phrase": "draw {object} wide", "operation": "OPEN", "kind": "object"},
+        {"phrase": "cinch {object} shut", "operation": "CLOSE", "kind": "object"},
+        {"phrase": "button {object} tight", "operation": "CLOSE", "kind": "object"},
+        {"phrase": "buckle on {item}", "operation": "EQUIP", "kind": "item"},
+        {"phrase": "strap on {item}", "operation": "EQUIP", "kind": "item"},
+        {"phrase": "tuck {item} away", "operation": "STOW", "kind": "item"},
+        {"phrase": "cache {item}", "operation": "STOW", "kind": "item"},
+        {"phrase": "convey {item} across to {recipient}", "operation": "TRANSFER", "kind": "transfer"}
+      ]
+    },
+    "REDTEAM": {
+      "HARM_TARGET": ["bop", "clout", "lamp"],
+      "MOVE_TRAVEL": ["skitter toward", "lope toward", "stomp toward"],
+      "SEARCH_INSPECT": ["eyeball", "case", "clock"],
+      "SPEECH_ONLY": ["holler at", "jaw at", "call on"],
+      "CAST_SPELL": ["fire", "flare", "spark"],
+      "USE_ITEM": ["neck", "glug", "belt down"],
+      "INTERACT_OBJECT": [
+        {"phrase": "wrench {object} ajar", "operation": "OPEN", "kind": "object"},
+        {"phrase": "clamp {object} shut", "operation": "CLOSE", "kind": "object"},
+        {"phrase": "arm myself with {item}", "operation": "EQUIP", "kind": "item"},
+        {"phrase": "bury {item} in my pack", "operation": "STOW", "kind": "item"},
+        {"phrase": "slide {item} across to {recipient}", "operation": "TRANSFER", "kind": "transfer"}
+      ]
+    }
+  },
+  "ambiguous_templates": {
+    "TRAIN": [
+      {"family": "HARM_TARGET", "declaration": "I attack them.", "missing_slot": "TARGET_COMBATANT"},
+      {"family": "MOVE_TRAVEL", "declaration": "I approach it.", "missing_slot": "DESTINATION"},
+      {"family": "SEARCH_INSPECT", "declaration": "I investigate it.", "missing_slot": "SUBJECT"},
+      {"family": "INTERACT_OBJECT", "declaration": "I open it.", "missing_slot": "OBJECT"},
+      {"family": "SPEECH_ONLY", "declaration": "I tell them.", "missing_slot": "ADDRESSEE"}
+    ],
+    "DEV": [
+      {"family": "HARM_TARGET", "declaration": "I strike them.", "missing_slot": "TARGET_COMBATANT"},
+      {"family": "MOVE_TRAVEL", "declaration": "I travel toward it.", "missing_slot": "DESTINATION"},
+      {"family": "SEARCH_INSPECT", "declaration": "I search that one.", "missing_slot": "SUBJECT"},
+      {"family": "INTERACT_OBJECT", "declaration": "I close it.", "missing_slot": "OBJECT"},
+      {"family": "SPEECH_ONLY", "declaration": "I ask them.", "missing_slot": "ADDRESSEE"}
+    ],
+    "TEST": [
+      {"family": "HARM_TARGET", "declaration": "I punch them.", "missing_slot": "TARGET_COMBATANT"},
+      {"family": "MOVE_TRAVEL", "declaration": "I enter it.", "missing_slot": "DESTINATION"},
+      {"family": "SEARCH_INSPECT", "declaration": "I study that one.", "missing_slot": "SUBJECT"},
+      {"family": "INTERACT_OBJECT", "declaration": "I equip it.", "missing_slot": "OBJECT"},
+      {"family": "SPEECH_ONLY", "declaration": "I warn them.", "missing_slot": "ADDRESSEE"}
+    ],
+    "REDTEAM": [
+      {"family": "HARM_TARGET", "declaration": "I shoot them.", "missing_slot": "TARGET_COMBATANT"},
+      {"family": "MOVE_TRAVEL", "declaration": "I retreat toward it.", "missing_slot": "DESTINATION"},
+      {"family": "SEARCH_INSPECT", "declaration": "I check it.", "missing_slot": "SUBJECT"},
+      {"family": "INTERACT_OBJECT", "declaration": "I stow it.", "missing_slot": "OBJECT"},
+      {"family": "SPEECH_ONLY", "declaration": "I threaten them.", "missing_slot": "ADDRESSEE"}
+    ]
+  },
+  "compound_pairs": {
+    "TRAIN": [
+      ["inspect {object}", "open {object}"],
+      ["approach {location}", "tell {npc}"],
+      ["attack {combatant}", "inspect {object}"],
+      ["equip {item}", "ask {npc}"],
+      ["search {object}", "travel toward {location}"],
+      ["warn {npc}", "close {object}"]
+    ],
+    "DEV": [
+      ["study {object}", "unlatch {object}"],
+      ["journey toward {location}", "greet {npc}"],
+      ["hit {combatant}", "check {object}"],
+      ["stow {item}", "request {npc}"],
+      ["look over {object}", "head toward {location}"],
+      ["negotiate {npc}", "close {object}"]
+    ],
+    "TEST": [
+      ["examine {object}", "open {object}"],
+      ["proceed toward {location}", "speak {npc}"],
+      ["stab {combatant}", "investigate {object}"],
+      ["equip {item}", "bargain {npc}"],
+      ["scan {object}", "run toward {location}"],
+      ["chat {npc}", "unlatch {object}"]
+    ],
+    "REDTEAM": [
+      ["rummage {object}", "break {object}"],
+      ["leave toward {location}", "threaten {npc}"],
+      ["kill {combatant}", "look over {object}"],
+      ["give {item} to {recipient}", "warn {npc}"],
+      ["check {object}", "go toward {location}"],
+      ["request {npc}", "pull {object}"]
+    ]
+  },
+  "zero_model_categories": [
+    "NEGATION",
+    "QUESTION",
+    "CANCELLATION",
+    "HYPOTHETICAL",
+    "REPORTED",
+    "QUOTED",
+    "CORRECTION",
+    "FRAMING"
+  ],
+  "required_family_coverage": [
+    "HARM_TARGET",
+    "MOVE_TRAVEL",
+    "SEARCH_INSPECT",
+    "INTERACT_OBJECT",
+    "SPEECH_ONLY",
+    "CAST_SPELL",
+    "USE_ITEM"
+  ],
+  "notes": [
+    "This is a bootstrap expansion plateau, not a completion claim.",
+    "Every split has exclusive synthetic scene themes and residual lexical pools.",
+    "TEST and REDTEAM are authored but never trainer-visible.",
+    "Real transcript wording is represented only as abstract language phenomena; no private transcript text is copied.",
+    "All residual examples must later be regenerated through pinned Frankenhomie before entering a frozen dataset."
+  ]
+}

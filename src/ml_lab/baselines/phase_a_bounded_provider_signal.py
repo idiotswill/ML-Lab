@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from ml_lab.baselines.service import BaselineRunResult, BaselineService
 from ml_lab.contracts.snapshot import ContractSnapshotService
 from ml_lab.core.models import DatasetSplit
 from ml_lab.datasets.leakage import canonical_json
+from ml_lab.storage.workspace import Workspace
 from ml_lab.trainers.phase_a_candidate_sparse import (
     _ask_player,
     _declaration,
@@ -141,7 +143,7 @@ class PhaseABoundedProviderSignalRunner(PhaseALocalProviderRunner):
 
 
 def run_phase_a_bounded_provider_signal_dev(
-    workspace,
+    workspace: Workspace,
     *,
     project_id: str,
     dataset_id: str,
@@ -162,7 +164,7 @@ def run_phase_a_bounded_provider_signal_dev(
     snapshots = ContractSnapshotService(workspace)
     snapshot = snapshots.get(contract_snapshot_id)
     baseline = BaselineService(workspace)
-    digest = __import__("hashlib").sha256(canonical_json(config).encode()).hexdigest()[:12]
+    digest = hashlib.sha256(canonical_json(config).encode()).hexdigest()[:12]
     experiment = baseline.create(
         project_id=project_id,
         dataset_id=dataset_id,

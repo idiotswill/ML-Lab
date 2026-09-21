@@ -113,6 +113,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run the first TRAIN-only Phase A sparse experiment in this frozen workspace.",
     )
     parser.add_argument(
+        "--phase-a-candidate-experiment",
+        type=Path,
+        help=(
+            "Run the candidate-relative TRAIN-only Phase A sparse experiment "
+            "in this frozen workspace."
+        ),
+    )
+    parser.add_argument(
         "--verify-bundle-worker",
         type=Path,
         help=argparse.SUPPRESS,
@@ -373,6 +381,30 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 22
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    if args.phase_a_candidate_experiment:
+        from ml_lab.adapters.phase_a_candidate_experiment import (
+            run_phase_a_candidate_sparse_experiment,
+        )
+
+        try:
+            result = run_phase_a_candidate_sparse_experiment(
+                workspace_path=args.phase_a_candidate_experiment,
+            )
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "integration_gate": "NO_GO",
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+            return 23
         print(json.dumps(result, sort_keys=True))
         return 0
     if args.verify_bundle_worker:

@@ -53,6 +53,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--phase-a-fixture-seed-evidence",
+        type=Path,
+        help="Write protected Phase A fixture evidence to this JSON path.",
+    )
+    parser.add_argument(
+        "--frankenhomie-repo",
+        type=Path,
+        help="Local Frankenhomie Git checkout used for pinned Phase A evidence.",
+    )
+    parser.add_argument(
+        "--phase-a-fixture-seed",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--verify-bundle-worker",
         type=Path,
         help=argparse.SUPPRESS,
@@ -152,6 +167,37 @@ def main(argv: list[str] | None = None) -> int:
         from ml_lab.adapters.phase_a_provider import run_local_provider_child
 
         return run_local_provider_child(args.phase_a_provider_child)
+    if args.phase_a_fixture_seed_evidence:
+        if args.frankenhomie_repo is None:
+            print("--frankenhomie-repo is required", file=sys.stderr)
+            return 11
+        from ml_lab.adapters.phase_a_fixture_seed import (
+            DEFAULT_PHASE_A_FIXTURE_SEED,
+            run_phase_a_fixture_seed_evidence,
+        )
+
+        seed_path = args.phase_a_fixture_seed or DEFAULT_PHASE_A_FIXTURE_SEED
+        try:
+            result = run_phase_a_fixture_seed_evidence(
+                frankenhomie_repository=args.frankenhomie_repo,
+                output_path=args.phase_a_fixture_seed_evidence,
+                seed_path=seed_path,
+            )
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "integration_gate": "NO_GO",
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+            return 12
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result.get("ok") is True else 13
     if args.verify_bundle_worker:
         if args.verification_receipt is None:
             print("--verification-receipt is required", file=sys.stderr)

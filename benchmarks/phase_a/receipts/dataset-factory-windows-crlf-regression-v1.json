@@ -1,0 +1,28 @@
+{
+  "schema": "ml-lab-phase-a-artifact-integrity-regression/1",
+  "status": "PRESERVED_FAILURE",
+  "target_frankenhomie_commit": "1ff3e2155a3c2d2b316023e9933edf3a6d53697f",
+  "target_contract": "semantic-residual-v2",
+  "factory_receipt_payload_sha256": "7f0bb48276b94baf60bc69b8f92795f508a82065b3eeb1d5076bb85929340534",
+  "factory_receipt_file_sha256": "61a79b121abcd961bf53360d5437bcd11e60bf6bcd485413e31f38d5479b8bc1",
+  "claimed_dataset_sha256": "e9fb102e8a911b367542089b1730441f2a721352fbc0c31018318735eed2ccf2",
+  "observed_windows_dataset_sha256": "81ef1d8321fe1ae341689c282d0f03fd564c5de86c638cd5214ccfb18c7cb3c9",
+  "normalized_lf_dataset_sha256": "e9fb102e8a911b367542089b1730441f2a721352fbc0c31018318735eed2ccf2",
+  "dataset_line_count": 18,
+  "observed_crlf_count": 18,
+  "semantic_factory_ok": true,
+  "case_count": 18,
+  "emitted_count": 18,
+  "split_counts": {
+    "TRAIN": 12,
+    "DEV": 6
+  },
+  "full_payload_blocking_count": 0,
+  "protected_language_blocking_count": 0,
+  "production_data": false,
+  "transcript_derived": false,
+  "candidate_training_data": false,
+  "reason": "Windows text-mode newline translation changed physical JSONL bytes after the factory computed its dataset SHA-256.",
+  "correction": "Write canonical UTF-8 dataset bytes directly and hash the bytes read back from disk.",
+  "integration_gate": "NO_GO"
+}

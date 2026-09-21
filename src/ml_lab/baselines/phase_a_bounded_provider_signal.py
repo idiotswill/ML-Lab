@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping, Sequence
+from typing import cast
 from pathlib import Path
 
-from ml_lab.adapters.phase_a import PHASE_A_CONTRACT_VERSION, PhaseAResidualAdapter
+from ml_lab.adapters.phase_a import (
+    PHASE_A_ADAPTER_ID,
+    PHASE_A_CONTRACT_VERSION,
+    PhaseAResidualAdapter,
+)
 from ml_lab.adapters.phase_a_provider import (
     LocalProviderProposal,
     PhaseALocalProviderRunner,
@@ -157,12 +162,18 @@ def run_phase_a_bounded_provider_signal_dev(
         endpoint=endpoint,
         timeout_seconds=timeout_seconds,
     )
-    clean_model = str(config["model"])
-    clean_endpoint = str(config["endpoint"])
-    clean_timeout = float(config["timeout_seconds"])
+    clean_model = cast(str, config["model"])
+    clean_endpoint = cast(str, config["endpoint"])
+    clean_timeout = cast(float, config["timeout_seconds"])
 
     snapshots = ContractSnapshotService(workspace)
     snapshot = snapshots.get(contract_snapshot_id)
+    if snapshot.project_id != project_id:
+        raise ValueError("Pinned contract snapshot belongs to a different project.")
+    if snapshot.adapter_id != PHASE_A_ADAPTER_ID:
+        raise ValueError("Bounded provider signal requires a Phase A contract snapshot.")
+    if snapshot.contract_version != PHASE_A_CONTRACT_VERSION:
+        raise ValueError("Pinned Phase A contract version is incompatible.")
     baseline = BaselineService(workspace)
     digest = hashlib.sha256(canonical_json(config).encode()).hexdigest()[:12]
     experiment = baseline.create(

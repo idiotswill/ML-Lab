@@ -88,7 +88,7 @@
       "HARM_TARGET": ["pelt", "bludgeon", "smash", "cuff", "belt", "thrash"],
       "MOVE_TRAVEL": ["saunter toward", "trek toward", "scamper toward", "glide toward", "trudge toward", "sweep toward"],
       "SEARCH_INSPECT": ["scrutinize", "sift through", "comb", "catalogue", "scope", "evaluate"],
-      "SPEECH_ONLY": ["beseech", "accost", "implore", "notify", "appeal to", "jaw with"],
+      "SPEECH_ONLY": ["beseech", "accost", "implore", "notify", "remonstrate with", "jaw with"],
       "CAST_SPELL": ["evoke", "loose", "kindle", "radiate", "form", "voice"],
       "USE_ITEM": ["toss back", "quench with", "slake myself with", "polish off", "wet my throat with", "finish"],
       "INTERACT_OBJECT": [

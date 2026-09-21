@@ -440,7 +440,18 @@ def _hidden_fixture_leaks(
     facts: Sequence[Mapping[str, object]],
     request: Mapping[str, object],
 ) -> list[dict[str, str]]:
-    visible_strings = _all_strings(request)
+    visible_strings: set[str] = set()
+    context = request.get("context")
+    if isinstance(context, Mapping):
+        visible_strings.update(_all_strings(context))
+    assessment = request.get("assessment")
+    if isinstance(assessment, Mapping):
+        candidates = assessment.get("candidates")
+        if candidates is not None:
+            visible_strings.update(_all_strings(candidates))
+    family_slots = request.get("family_slots")
+    if family_slots is not None:
+        visible_strings.update(_all_strings(family_slots))
     leaks: list[dict[str, str]] = []
     for fact in facts:
         if fact.get("visibility") != "GM_ONLY":

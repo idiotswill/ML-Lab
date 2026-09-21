@@ -123,7 +123,7 @@
     "TRAIN": [
       {"family": "HARM_TARGET", "declaration": "I attack them.", "missing_slot": "TARGET_COMBATANT"},
       {"family": "MOVE_TRAVEL", "declaration": "I approach it.", "missing_slot": "DESTINATION"},
-      {"family": "SEARCH_INSPECT", "declaration": "I inspect it.", "missing_slot": "SUBJECT"},
+      {"family": "SEARCH_INSPECT", "declaration": "I investigate it.", "missing_slot": "SUBJECT"},
       {"family": "INTERACT_OBJECT", "declaration": "I open it.", "missing_slot": "OBJECT"},
       {"family": "SPEECH_ONLY", "declaration": "I tell them.", "missing_slot": "ADDRESSEE"}
     ],

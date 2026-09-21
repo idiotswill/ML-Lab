@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ml_lab import app
 import ml_lab.adapters.phase_a_fixture_seed as fixture_seed_module
+from ml_lab import app
 
 
 def test_fixture_evidence_cli_requires_frankenhomie_repo(

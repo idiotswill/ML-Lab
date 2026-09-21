@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -268,11 +269,13 @@ def test_dataset_factory_emits_only_valid_train_dev_rows(
     assert result["transcript_derived"] is False
     assert result["integration_gate"] == "NO_GO"
 
+    dataset_path = output / "phase-a-train-dev-v1.jsonl"
+    dataset_bytes = dataset_path.read_bytes()
+    assert b"\r\n" not in dataset_bytes
+    assert hashlib.sha256(dataset_bytes).hexdigest() == result["dataset_sha256"]
     rows = [
         json.loads(line)
-        for line in (output / "phase-a-train-dev-v1.jsonl")
-        .read_text(encoding="utf-8")
-        .splitlines()
+        for line in dataset_bytes.decode("utf-8").splitlines()
     ]
     assert {row["split"] for row in rows} == {"TRAIN", "DEV"}
     adapter = PhaseAResidualAdapter()

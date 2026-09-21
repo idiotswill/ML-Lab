@@ -11,6 +11,15 @@ from ml_lab.storage.workspace import Workspace
 
 _FAKE_DB = """
 SCHEMA = "CREATE TABLE IF NOT EXISTS fixture_marker (id INTEGER);"
+
+def _execute_sql_script(conn, script):
+    conn.executescript(script)
+
+def _legacy_migrate(conn):
+    conn.execute("CREATE TABLE IF NOT EXISTS fixture_legacy_migration (id INTEGER)")
+
+def _run_migrations(conn):
+    conn.execute("CREATE TABLE IF NOT EXISTS fixture_numbered_migration (id INTEGER)")
 """
 
 _FAKE_TURN_ORCHESTRATOR = """
@@ -71,6 +80,12 @@ class FakeResult:
 
 def route_player_semantics(conn, *, declaration, provider, **kwargs):
     assert kwargs["allowed_action_families"] == ("SEARCH_INSPECT",)
+    assert conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='fixture_legacy_migration'"
+    ).fetchone()
+    assert conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='fixture_numbered_migration'"
+    ).fetchone()
     if declaration.startswith("residual"):
         try:
             provider.resolve(FakeRequest(declaration))

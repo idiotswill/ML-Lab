@@ -383,3 +383,173 @@ def test_default_synthetic_seed_contains_only_train_dev_and_no_private_sources()
         "action_family": "MOVE_TRAVEL",
         "slots": [{"name": "DESTINATION", "value": "location:east-passage"}],
     }
+
+
+
+def test_dataset_factory_reuses_exact_case_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fakes(monkeypatch)
+    seed = _write_seed(
+        tmp_path / "seed.json",
+        "I appraise Brass Hatch.",
+        "I survey Brass Hatch.",
+    )
+    protected = _write_protected(tmp_path / "protected.json")
+    cache = tmp_path / "case-cache"
+    workspace = Workspace.create(tmp_path / "workspace")
+
+    first = run_phase_a_dataset_factory(
+        workspace=workspace,
+        frankenhomie_repository=tmp_path / "frankenhomie",
+        output_dir=tmp_path / "first",
+        seed_path=seed,
+        protected_seed_path=protected,
+        case_cache_dir=cache,
+    )
+    assert first["ok"] is True
+    assert first["case_cache"] == {
+        "enabled": True,
+        "hits": 0,
+        "misses": 2,
+    }
+    assert _FakeExporter.calls == 2
+
+    second = run_phase_a_dataset_factory(
+        workspace=workspace,
+        frankenhomie_repository=tmp_path / "frankenhomie",
+        output_dir=tmp_path / "second",
+        seed_path=seed,
+        protected_seed_path=protected,
+        case_cache_dir=cache,
+    )
+    assert second["ok"] is True
+    assert second["case_cache"] == {
+        "enabled": True,
+        "hits": 2,
+        "misses": 0,
+    }
+    assert _FakeExporter.calls == 2
+    assert (
+        tmp_path / "first" / "phase-a-train-dev-v1.jsonl"
+    ).read_bytes() == (
+        tmp_path / "second" / "phase-a-train-dev-v1.jsonl"
+    ).read_bytes()
+
+
+def test_dataset_factory_cache_invalidates_only_changed_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fakes(monkeypatch)
+    protected = _write_protected(tmp_path / "protected.json")
+    cache = tmp_path / "case-cache"
+    workspace = Workspace.create(tmp_path / "workspace")
+    original = _write_seed(
+        tmp_path / "seed-original.json",
+        "I appraise Brass Hatch.",
+        "I survey Brass Hatch.",
+    )
+    run_phase_a_dataset_factory(
+        workspace=workspace,
+        frankenhomie_repository=tmp_path / "frankenhomie",
+        output_dir=tmp_path / "first",
+        seed_path=original,
+        protected_seed_path=protected,
+        case_cache_dir=cache,
+    )
+    changed = _write_seed(
+        tmp_path / "seed-changed.json",
+        "I carefully appraise Brass Hatch.",
+        "I survey Brass Hatch.",
+    )
+    result = run_phase_a_dataset_factory(
+        workspace=workspace,
+        frankenhomie_repository=tmp_path / "frankenhomie",
+        output_dir=tmp_path / "second",
+        seed_path=changed,
+        protected_seed_path=protected,
+        case_cache_dir=cache,
+    )
+
+    assert result["case_cache"] == {
+        "enabled": True,
+        "hits": 1,
+        "misses": 1,
+    }
+    assert _FakeExporter.calls == 3
+
+
+def test_dataset_factory_blocks_gm_only_fixture_fact_leak(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fakes(monkeypatch)
+    _FakeExporter.leak_hidden = True
+    seed_path = _write_seed(
+        tmp_path / "seed.json",
+        "I appraise Brass Hatch.",
+        "I survey Brass Hatch.",
+    )
+    seed = json.loads(seed_path.read_text(encoding="utf-8"))
+    seed["scenes"]["room"]["facts"].append(
+        {
+            "key": "campaign.entity.npc.hidden-observer",
+            "value": "Hidden Observer",
+            "source": "fixture:test",
+            "visibility": "GM_ONLY",
+        }
+    )
+    seed_path.write_text(json.dumps(seed), encoding="utf-8")
+
+    result = run_phase_a_dataset_factory(
+        workspace=Workspace.create(tmp_path / "workspace"),
+        frankenhomie_repository=tmp_path / "frankenhomie",
+        output_dir=tmp_path / "out",
+        seed_path=seed_path,
+        protected_seed_path=_write_protected(tmp_path / "protected.json"),
+    )
+
+    assert result["ok"] is False
+    assert result["candidate_training_data"] is False
+    assert any(
+        error["code"] == "HIDDEN_FIXTURE_FACT_LEAK"
+        for error in result["errors"]
+    )
+    assert not (tmp_path / "out" / "phase-a-train-dev-v1.jsonl").exists()
+
+
+def test_dataset_factory_uses_seed_source_id_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fakes(monkeypatch)
+    seed_path = _write_seed(
+        tmp_path / "seed.json",
+        "I appraise Brass Hatch.",
+        "I survey Brass Hatch.",
+    )
+    seed = json.loads(seed_path.read_text(encoding="utf-8"))
+    seed["source_id_prefix"] = "synthetic-corpus-v1"
+    seed_path.write_text(json.dumps(seed), encoding="utf-8")
+
+    result = run_phase_a_dataset_factory(
+        workspace=Workspace.create(tmp_path / "workspace"),
+        frankenhomie_repository=tmp_path / "frankenhomie",
+        output_dir=tmp_path / "out",
+        seed_path=seed_path,
+        protected_seed_path=_write_protected(tmp_path / "protected.json"),
+    )
+
+    assert result["ok"] is True
+    rows = [
+        json.loads(line)
+        for line in (
+            tmp_path / "out" / "phase-a-train-dev-v1.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+    ]
+    assert all(
+        row["source_id"].startswith("synthetic-corpus-v1:")
+        for row in rows
+    )

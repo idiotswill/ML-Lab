@@ -352,3 +352,13 @@ def test_default_synthetic_seed_contains_only_train_dev_and_no_private_sources()
         for scene in seed["scenes"].values()
         for fact in scene["facts"]
     )
+    movement = next(
+        case for case in seed["cases"]
+        if case["case_id"] == "train-move-stride-east"
+    )
+    assert movement["declaration"] == "I stride eastward toward East Passage."
+    assert movement["expected"] == {
+        "decision": "RESOLVE",
+        "action_family": "MOVE_TRAVEL",
+        "slots": [{"name": "DESTINATION", "value": "location:east-passage"}],
+    }

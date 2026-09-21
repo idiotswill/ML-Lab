@@ -179,7 +179,8 @@ def run_phase_a_baselines(
     _validate_receipt_and_labels(receipt, labels)
 
     commit_sha = str(receipt["target_frankenhomie_commit"])
-    materialized = PhaseAReferenceValidator(workspace).materialize(
+    reference = PhaseAReferenceValidator(workspace)
+    materialized = reference.materialize(
         frankenhomie_repository,
         commit_sha,
     )
@@ -220,7 +221,19 @@ def run_phase_a_baselines(
             adapter.validate_exported_request(request)
             proposal = baseline.predict(request)
             validation = adapter.validate_proposal(request, proposal)
+            reference_status = None
+            reference_error = None
             contract_ok = validation.accepted
+            if contract_ok:
+                pinned = reference.validate(
+                    repository=frankenhomie_repository,
+                    ref=commit_sha,
+                    request=request,
+                    proposal=proposal,
+                )
+                reference_status = pinned.status
+                reference_error = pinned.error_code
+                contract_ok = pinned.status == "ACCEPTED"
             if not contract_ok:
                 contract_failures += 1
 
@@ -254,7 +267,8 @@ def run_phase_a_baselines(
                     },
                     "actual": proposal,
                     "contract_ok": contract_ok,
-                    "contract_error": validation.error_code,
+                    "contract_error": validation.error_code or reference_error,
+                    "reference_status": reference_status,
                     "decision_correct": is_decision_correct,
                     "correct": is_correct,
                 }

@@ -5,8 +5,8 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
-from ml_lab.adapters.phase_a_freeze import _validate_factory_receipt
 from ml_lab.adapters.phase_a import PhaseAResidualAdapter
+from ml_lab.adapters.phase_a_freeze import _validate_factory_receipt
 from ml_lab.contracts.snapshot import ContractSnapshotService
 from ml_lab.core.models import DatasetSplit, DatasetState
 from ml_lab.datasets.leakage import canonical_json

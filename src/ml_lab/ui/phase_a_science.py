@@ -452,7 +452,8 @@ class PhaseAScienceController(QObject):
         if self._split is DatasetSplit.DEV:
             self.operationFailed.emit(
                 "Local provider error",
-                "DEV is development evidence. Switch to TEST or REDTEAM for protected provider runs.",
+                "DEV is development evidence. Switch to TEST or REDTEAM "
+                "for protected provider runs.",
             )
             return
         record = self._selected_record()

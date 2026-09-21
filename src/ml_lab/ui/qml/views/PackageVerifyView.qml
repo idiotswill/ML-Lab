@@ -316,14 +316,16 @@ Item {
 
             Panel {
                 SplitView.fillWidth: true
-                SplitView.minimumWidth: 260
+                SplitView.minimumWidth: 220
 
                 ScrollView {
+                    id: packageDetailsScroll
                     anchors.fill: parent
                     clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                     ColumnLayout {
-                        width: Math.max(parent.width - 20, 240)
+                        width: Math.max(packageDetailsScroll.availableWidth - 20, 1)
                         spacing: 10
 
                         Text {

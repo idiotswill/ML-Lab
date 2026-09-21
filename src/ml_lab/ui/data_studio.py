@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from dataclasses import asdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from PySide6.QtCore import Property, QObject, QRunnable, QThreadPool, QUrl, Signal, Slot
 
 from ml_lab.adapters.builtin import contract_capture_descriptor_for, dataset_validator_for
 from ml_lab.contracts.snapshot import ContractSnapshotService
 from ml_lab.core.models import DatasetExample, DatasetSplit, DatasetState, DatasetVersion
+from ml_lab.core.process import application_command
 from ml_lab.datasets.service import DatasetService
 from ml_lab.storage.workspace import Workspace
 
@@ -28,6 +32,8 @@ class _DatasetOperation(QRunnable):
         dataset_id: str,
         adapter_id: str,
         source: Path | None = None,
+        split_filter: str = "ALL",
+        page_size: int = 100,
     ) -> None:
         super().__init__()
         self.context_token = context_token
@@ -36,18 +42,32 @@ class _DatasetOperation(QRunnable):
         self.dataset_id = dataset_id
         self.adapter_id = adapter_id
         self.source = source
+        self.split_filter = split_filter
+        self.page_size = page_size
         self.signals = _DatasetOperationSignals()
 
     @Slot()
     def run(self) -> None:
         try:
-            result = _perform_dataset_operation(
-                workspace_root=self.workspace_root,
-                operation=self.operation,
-                dataset_id=self.dataset_id,
-                adapter_id=self.adapter_id,
-                source=self.source,
-            )
+            if self.operation == "import":
+                result = _perform_dataset_import_via_child(
+                    workspace_root=self.workspace_root,
+                    dataset_id=self.dataset_id,
+                    adapter_id=self.adapter_id,
+                    source=self.source,
+                    split_filter=self.split_filter,
+                    page_size=self.page_size,
+                )
+            else:
+                result = _perform_dataset_operation(
+                    workspace_root=self.workspace_root,
+                    operation=self.operation,
+                    dataset_id=self.dataset_id,
+                    adapter_id=self.adapter_id,
+                    source=self.source,
+                    split_filter=self.split_filter,
+                    page_size=self.page_size,
+                )
         except Exception as exc:
             self.signals.failed.emit(
                 self.context_token,
@@ -81,6 +101,10 @@ class DataStudioController(QObject):
         self._busy = False
         self._busy_message = ""
         self._context_token = 0
+        self._datasets_cache: list[dict[str, object]] = []
+        self._selected_dataset_cache: dict[str, object] = {}
+        self._split_counts_cache = _empty_split_counts()
+        self._examples_cache: list[dict[str, object]] = []
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(1)
 
@@ -94,6 +118,7 @@ class DataStudioController(QObject):
         self._offset = 0
         self._busy = False
         self._busy_message = ""
+        self._refresh_view_cache()
         self.changed.emit()
 
     def clear_project(self) -> None:
@@ -105,6 +130,7 @@ class DataStudioController(QObject):
         self._offset = 0
         self._busy = False
         self._busy_message = ""
+        self._reset_view_cache()
         self.changed.emit()
 
     def shutdown(self) -> None:
@@ -168,47 +194,19 @@ class DataStudioController(QObject):
 
     @Property(list, notify=changed)
     def datasets(self) -> list[dict[str, object]]:
-        if not self._workspace or not self._project_id:
-            return []
-        service = DatasetService(self._workspace)
-        return [_dataset_dict(item) for item in service.list_for_project(self._project_id)]
+        return self._datasets_cache
 
     @Property(dict, notify=changed)
     def selectedDataset(self) -> dict[str, object]:
-        item = self._selected_dataset()
-        return _dataset_dict(item) if item else {}
+        return self._selected_dataset_cache
 
     @Property(dict, notify=changed)
     def splitCounts(self) -> dict[str, int]:
-        if not self._workspace or not self._selected_dataset_id:
-            return {split.value: 0 for split in DatasetSplit} | {"ALL": 0}
-        with self._workspace.database.connection() as conn:
-            rows = conn.execute(
-                "SELECT split,COUNT(*) AS count FROM dataset_examples "
-                "WHERE dataset_id=? GROUP BY split",
-                (self._selected_dataset_id,),
-            ).fetchall()
-        counts = {split.value: 0 for split in DatasetSplit}
-        for row in rows:
-            counts[str(row["split"])] = int(row["count"])
-        counts["ALL"] = sum(counts.values())
-        return counts
+        return self._split_counts_cache
 
     @Property(list, notify=changed)
     def examples(self) -> list[dict[str, object]]:
-        if not self._workspace or not self._selected_dataset_id:
-            return []
-        split = None if self._split_filter == "ALL" else DatasetSplit(self._split_filter)
-        service = DatasetService(self._workspace)
-        return [
-            _example_dict(item)
-            for item in service.page_examples(
-                self._selected_dataset_id,
-                split=split,
-                offset=self._offset,
-                limit=self._page_size,
-            )
-        ]
+        return self._examples_cache
 
     @Slot(str, str)
     def createDataset(self, name: str, contract_snapshot_id: str) -> None:
@@ -239,6 +237,7 @@ class DataStudioController(QObject):
         self._selected_dataset_id = item.id
         self._split_filter = "ALL"
         self._offset = 0
+        self._refresh_view_cache()
         self.changed.emit()
         self.operationCompleted.emit(f"Created dataset {item.name}")
 
@@ -257,6 +256,7 @@ class DataStudioController(QObject):
         self._selected_dataset_id = item.id
         self._split_filter = "ALL"
         self._offset = 0
+        self._refresh_view_cache()
         self.changed.emit()
 
     @Slot(str)
@@ -267,17 +267,20 @@ class DataStudioController(QObject):
             return
         self._split_filter = normalized
         self._offset = 0
+        self._refresh_view_cache()
         self.changed.emit()
 
     @Slot()
     def previousPage(self) -> None:
         self._offset = max(0, self._offset - self._page_size)
+        self._refresh_view_cache()
         self.changed.emit()
 
     @Slot()
     def nextPage(self) -> None:
         if self._offset + self._page_size < self._filtered_total():
             self._offset += self._page_size
+            self._refresh_view_cache()
             self.changed.emit()
 
     @Slot(str)
@@ -310,23 +313,68 @@ class DataStudioController(QObject):
             item = DatasetService(self._workspace).get(self._selected_dataset_id)
         except KeyError:
             self._selected_dataset_id = ""
+            self._reset_view_cache()
             return None
         if item.project_id != self._project_id:
             self._selected_dataset_id = ""
+            self._reset_view_cache()
             return None
         return item
 
+    def _reset_view_cache(self) -> None:
+        self._datasets_cache = []
+        self._selected_dataset_cache = {}
+        self._split_counts_cache = _empty_split_counts()
+        self._examples_cache = []
+
+    def _refresh_view_cache(self) -> None:
+        if not self._workspace or not self._project_id:
+            self._reset_view_cache()
+            return
+        snapshot = _build_view_snapshot(
+            workspace=self._workspace,
+            project_id=self._project_id,
+            selected_dataset_id=self._selected_dataset_id,
+            split_filter=self._split_filter,
+            offset=self._offset,
+            page_size=self._page_size,
+        )
+        self._apply_view_snapshot(snapshot)
+
+    def _apply_view_snapshot(self, snapshot: dict[str, object]) -> None:
+        datasets = snapshot.get("datasets")
+        selected = snapshot.get("selected_dataset")
+        counts = snapshot.get("split_counts")
+        examples = snapshot.get("examples")
+        if not isinstance(datasets, list):
+            raise ValueError("Data Studio snapshot datasets must be a list.")
+        if not isinstance(selected, dict):
+            raise ValueError("Data Studio snapshot selected_dataset must be an object.")
+        if not isinstance(counts, dict):
+            raise ValueError("Data Studio snapshot split_counts must be an object.")
+        if not isinstance(examples, list):
+            raise ValueError("Data Studio snapshot examples must be a list.")
+        self._datasets_cache = [
+            {str(key): value for key, value in item.items()}
+            for item in datasets
+            if isinstance(item, dict)
+        ]
+        self._selected_dataset_cache = {
+            str(key): value for key, value in selected.items()
+        }
+        clean_counts = _empty_split_counts()
+        for key, value in counts.items():
+            if isinstance(key, str) and isinstance(value, int) and not isinstance(value, bool):
+                clean_counts[key] = value
+        self._split_counts_cache = clean_counts
+        self._examples_cache = [
+            {str(key): value for key, value in item.items()}
+            for item in examples
+            if isinstance(item, dict)
+        ]
+
     def _filtered_total(self) -> int:
-        if not self._workspace or not self._selected_dataset_id:
-            return 0
-        query = "SELECT COUNT(*) FROM dataset_examples WHERE dataset_id=?"
-        params: tuple[object, ...] = (self._selected_dataset_id,)
-        if self._split_filter != "ALL":
-            query += " AND split=?"
-            params = (self._selected_dataset_id, self._split_filter)
-        with self._workspace.database.connection() as conn:
-            row = conn.execute(query, params).fetchone()
-        return int(row[0]) if row else 0
+        return int(self._split_counts_cache.get(self._split_filter, 0))
 
     def _start_operation(
         self,
@@ -353,6 +401,8 @@ class DataStudioController(QObject):
             dataset_id=dataset_id,
             adapter_id=self._adapter_id,
             source=source,
+            split_filter=self._split_filter,
+            page_size=self._page_size,
         )
         task.signals.completed.connect(self._operation_completed)
         task.signals.failed.connect(self._operation_failed)
@@ -370,10 +420,15 @@ class DataStudioController(QObject):
             return
         self._busy = False
         self._busy_message = ""
+        details = result if isinstance(result, dict) else {}
         if dataset_id == self._selected_dataset_id:
             self._offset = 0
+            snapshot = details.get("view_snapshot")
+            if isinstance(snapshot, dict):
+                self._apply_view_snapshot(snapshot)
+            else:
+                self._refresh_view_cache()
         self.changed.emit()
-        details = result if isinstance(result, dict) else {}
         if operation == "import":
             imported = int(details.get("imported", 0))
             rejected = int(details.get("rejected", 0))
@@ -402,6 +457,78 @@ class DataStudioController(QObject):
         self.operationFailed.emit(title, error)
 
 
+def _perform_dataset_import_via_child(
+    *,
+    workspace_root: Path,
+    dataset_id: str,
+    adapter_id: str,
+    source: Path | None,
+    split_filter: str = "ALL",
+    page_size: int = 100,
+) -> dict[str, object]:
+    if source is None:
+        raise ValueError("Import source is required.")
+    cache_root = workspace_root / "cache"
+    cache_root.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix="dataset-import-", dir=cache_root) as temp_dir:
+        temp_root = Path(temp_dir)
+        staged_database = temp_root / "prepared.sqlite"
+        summary_path = temp_root / "summary.json"
+        spec_path = temp_root / "spec.json"
+        spec_path.write_text(
+            json.dumps(
+                {
+                    "format_version": 1,
+                    "source": str(source),
+                    "staged_database": str(staged_database),
+                    "summary_path": str(summary_path),
+                    "adapter_id": adapter_id,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+        child = subprocess.run(
+            application_command("--dataset-import-stage-child", str(spec_path)),
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+            creationflags=flags,
+        )
+        if child.returncode != 0:
+            detail = child.stderr.strip() or child.stdout.strip() or "unknown error"
+            raise RuntimeError(f"Dataset import child failed: {detail[-2000:]}")
+        if not summary_path.is_file() or not staged_database.is_file():
+            raise RuntimeError("Dataset import child did not produce staged output.")
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        if not isinstance(summary, dict):
+            raise ValueError("Dataset import child summary must be an object.")
+
+        workspace = Workspace.open(workspace_root)
+        service = DatasetService(workspace)
+        dataset = service.get(dataset_id)
+        result = service.commit_prepared_import(
+            dataset_id,
+            staged_database,
+            {str(key): value for key, value in summary.items()},
+        ).to_dict()
+        result["view_snapshot"] = _build_view_snapshot(
+            workspace=workspace,
+            project_id=dataset.project_id,
+            selected_dataset_id=dataset_id,
+            split_filter=split_filter,
+            offset=0,
+            page_size=page_size,
+        )
+        return result
+
+
 def _perform_dataset_operation(
     *,
     workspace_root: Path,
@@ -409,14 +536,26 @@ def _perform_dataset_operation(
     dataset_id: str,
     adapter_id: str,
     source: Path | None,
+    split_filter: str = "ALL",
+    page_size: int = 100,
 ) -> dict[str, object]:
     workspace = Workspace.open(workspace_root)
     service = DatasetService(workspace)
+    dataset = service.get(dataset_id)
     if operation == "import":
         if source is None:
             raise ValueError("Import source is required.")
         validator = dataset_validator_for(adapter_id)
-        return service.import_jsonl(dataset_id, source, validator=validator).to_dict()
+        result = service.import_jsonl(dataset_id, source, validator=validator).to_dict()
+        result["view_snapshot"] = _build_view_snapshot(
+            workspace=workspace,
+            project_id=dataset.project_id,
+            selected_dataset_id=dataset_id,
+            split_filter=split_filter,
+            offset=0,
+            page_size=page_size,
+        )
+        return result
     if operation == "freeze":
         frozen = service.freeze(dataset_id)
         return {
@@ -424,8 +563,72 @@ def _perform_dataset_operation(
             "state": frozen.state.value,
             "manifest_sha256": frozen.manifest_artifact_digest or "",
             "leakage_report_sha256": frozen.leakage_report_artifact_digest or "",
+            "view_snapshot": _build_view_snapshot(
+                workspace=workspace,
+                project_id=frozen.project_id,
+                selected_dataset_id=frozen.id,
+                split_filter=split_filter,
+                offset=0,
+                page_size=page_size,
+            ),
         }
     raise ValueError(f"Unsupported dataset operation: {operation}")
+
+
+def _empty_split_counts() -> dict[str, int]:
+    return {split.value: 0 for split in DatasetSplit} | {"ALL": 0}
+
+
+def _build_view_snapshot(
+    *,
+    workspace: Workspace,
+    project_id: str,
+    selected_dataset_id: str,
+    split_filter: str,
+    offset: int,
+    page_size: int,
+) -> dict[str, object]:
+    service = DatasetService(workspace)
+    datasets = [_dataset_dict(item) for item in service.list_for_project(project_id)]
+    if not selected_dataset_id:
+        return {
+            "datasets": datasets,
+            "selected_dataset": {},
+            "split_counts": _empty_split_counts(),
+            "examples": [],
+        }
+
+    selected = service.get(selected_dataset_id)
+    if selected.project_id != project_id:
+        raise ValueError("Selected dataset does not belong to this project.")
+
+    with workspace.database.connection() as conn:
+        rows = conn.execute(
+            "SELECT split,COUNT(*) AS count FROM dataset_examples "
+            "WHERE dataset_id=? GROUP BY split",
+            (selected_dataset_id,),
+        ).fetchall()
+    counts = _empty_split_counts()
+    for row in rows:
+        counts[str(row["split"])] = int(row["count"])
+    counts["ALL"] = sum(counts[split.value] for split in DatasetSplit)
+
+    split = None if split_filter == "ALL" else DatasetSplit(split_filter)
+    examples = [
+        _example_dict(item)
+        for item in service.page_examples(
+            selected_dataset_id,
+            split=split,
+            offset=offset,
+            limit=page_size,
+        )
+    ]
+    return {
+        "datasets": datasets,
+        "selected_dataset": _dataset_dict(selected),
+        "split_counts": counts,
+        "examples": examples,
+    }
 
 
 def _dataset_dict(item: DatasetVersion) -> dict[str, object]:

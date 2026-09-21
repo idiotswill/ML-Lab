@@ -302,7 +302,7 @@ Item {
                             GridLayout {
                                 visible: lab.hasRunnableTrainer
                                 Layout.fillWidth: true
-                                columns: 4
+                                columns: detailsScroll.availableWidth < 620 ? 2 : 4
                                 rowSpacing: 8
                                 columnSpacing: 10
 
@@ -333,6 +333,7 @@ Item {
                                 TextField {
                                     id: seedField
                                     Layout.preferredWidth: 110
+                                    Layout.fillWidth: detailsScroll.availableWidth < 620
                                     text: "0"
                                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                                     activeFocusOnTab: true

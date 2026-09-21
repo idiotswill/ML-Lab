@@ -7,9 +7,11 @@ import "views"
 ApplicationWindow {
     id: window
 
-    visible: true
-    width: 1280
-    height: 720
+    property bool visualSmokeMode: false
+
+    visible: !visualSmokeMode
+    width: visualSmokeMode ? 1366 : 1280
+    height: visualSmokeMode ? 768 : 720
     minimumWidth: 960
     minimumHeight: 640
     title: "Frankenhomie ML Lab"

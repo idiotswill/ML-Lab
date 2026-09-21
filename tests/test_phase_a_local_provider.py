@@ -571,3 +571,15 @@ def test_provider_experiment_remains_an_ordinary_immutable_baseline(tmp_path: Pa
     assert stored.status is ExperimentStatus.COMPLETED
     assert stored.model_artifact_digest is None
     assert stored.metrics_artifact_digest is not None
+    environment = json.loads(stored.environment_json)
+    assert environment["reproducibility"]["mode"] == "NONDETERMINISTIC"
+    assert environment["reproducibility"]["comparison_policy"] == (
+        "VETO_EXACT_NON_VETO_REPORT_ONLY"
+    )
+    assert environment["reproducibility"]["metric_tolerances"] == {
+        "contract_failures": 0.0,
+        "false_commitments": 0.0,
+        "hidden_or_out_of_envelope": 0.0,
+        "unsupported_mechanics_authority": 0.0,
+        "zero_model_route_violations": 0.0,
+    }

@@ -16,6 +16,7 @@ from ml_lab.bundles.verify import write_verification_receipt
 from ml_lab.core.config import user_config_dir
 from ml_lab.core.models import TERMINAL_JOB_STATUSES, JobStatus
 from ml_lab.core.process import application_command
+from ml_lab.diagnostics.crash import install_local_crash_handler
 from ml_lab.diagnostics.logging_setup import configure_logging
 from ml_lab.jobs.manager import JobManager
 from ml_lab.jobs.worker import run_worker
@@ -27,7 +28,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ML Lab")
     parser.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
     parser.add_argument(
+        "--dataset-import-stage-child",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--phase-a-validator-child",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--phase-a-preflight-child",
         type=Path,
         help=argparse.SUPPRESS,
     )
@@ -57,18 +68,54 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--idle-memory-probe-child",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--smoke-test",
         action="store_true",
         help="Run a non-GUI installation smoke test.",
     )
     parser.add_argument("--job-smoke-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
+        "--release-smoke-prepare",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--release-smoke-reopen",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--restart-recovery-smoke-test",
         action="store_true",
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--release-visual-smoke",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--visual-theme",
+        choices=("dark", "light"),
+        default="dark",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--performance-probe",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--release-performance-evidence",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--performance-smoke",
         action="store_true",
         help=argparse.SUPPRESS,
     )
@@ -80,10 +127,18 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.worker:
         return run_worker(args.worker)
+    if args.dataset_import_stage_child:
+        from ml_lab.datasets.import_stage import run_import_stage_child
+
+        return run_import_stage_child(args.dataset_import_stage_child)
     if args.phase_a_validator_child:
         from ml_lab.adapters.phase_a_reference import run_reference_validator_child
 
         return run_reference_validator_child(args.phase_a_validator_child)
+    if args.phase_a_preflight_child:
+        from ml_lab.adapters.phase_a_reference import run_reference_preflight_child
+
+        return run_reference_preflight_child(args.phase_a_preflight_child)
     if args.phase_a_provider_child:
         from ml_lab.adapters.phase_a_provider import run_local_provider_child
 
@@ -100,14 +155,44 @@ def main(argv: list[str] | None = None) -> int:
         return prepare_interrupted_job(args.prepare_interrupted_job)
     if args.startup_probe_child:
         return startup_probe_child()
+    if args.idle_memory_probe_child:
+        return idle_memory_probe_child()
     if args.smoke_test:
         return smoke_test()
     if args.job_smoke_test:
         return job_smoke_test()
+    if args.release_smoke_prepare:
+        from ml_lab.release.smoke import prepare_clean_machine_smoke
+
+        print(json.dumps(prepare_clean_machine_smoke(args.release_smoke_prepare)))
+        return 0
+    if args.release_smoke_reopen:
+        from ml_lab.release.smoke import reopen_clean_machine_smoke
+
+        print(json.dumps(reopen_clean_machine_smoke(args.release_smoke_reopen)))
+        return 0
     if args.restart_recovery_smoke_test:
         return restart_recovery_smoke_test()
+    if args.release_visual_smoke:
+        from ml_lab.ui.release_visual_smoke import run_release_visual_smoke
+
+        result = run_release_visual_smoke(
+            args.release_visual_smoke,
+            args.visual_theme,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result.get("ok") else 8
     if args.performance_probe:
         return performance_probe()
+    if args.release_performance_evidence:
+        from ml_lab.release.performance import run_release_performance_evidence
+
+        result = run_release_performance_evidence(
+            args.release_performance_evidence,
+            smoke=args.performance_smoke,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result.get("ok") else 10
     if args.qml_smoke_test:
         return qml_smoke_test()
     return run_gui()
@@ -276,10 +361,29 @@ def startup_probe_child() -> int:
     qml_path = Path(__file__).parent / "ui" / "qml" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))
     app.processEvents()
-    ok = bool(engine.rootObjects())
+    roots = engine.rootObjects()
+    ok = bool(roots)
+    qml_load_ms = round((time.perf_counter() - started) * 1000, 2)
+    interactive_window_ready = False
+    interactive_ready_ms: float | None = None
+    if roots:
+        root = roots[0]
+        deadline = time.perf_counter() + 2.0
+        while time.perf_counter() < deadline:
+            app.processEvents()
+            if bool(root.property("visible")):
+                interactive_window_ready = True
+                interactive_ready_ms = round(
+                    (time.perf_counter() - started) * 1000,
+                    2,
+                )
+                break
+            time.sleep(0.005)
     payload = {
         "ok": ok,
-        "qml_load_ms": round((time.perf_counter() - started) * 1000, 2),
+        "interactive_window_ready": interactive_window_ready,
+        "interactive_ready_ms": interactive_ready_ms,
+        "qml_load_ms": qml_load_ms,
         "working_set_bytes": _working_set_bytes(),
     }
     print(json.dumps(payload), flush=True)
@@ -288,6 +392,50 @@ def startup_probe_child() -> int:
     del app
     return 0 if ok else 2
 
+
+
+def idle_memory_probe_child() -> int:
+    """Load the base QML shell, settle briefly, then report idle working set."""
+    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtQml import QQmlApplicationEngine
+
+    from ml_lab.ui.controller import AppController
+
+    app = QGuiApplication(["ml-lab-idle-memory-probe"])
+    app.setOrganizationName("Frankenhomie")
+    app.setOrganizationDomain("local.frankenhomie")
+    app.setApplicationName("ML Lab")
+    controller = AppController()
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("appController", controller)
+    qml_path = Path(__file__).parent / "ui" / "qml" / "Main.qml"
+    engine.load(QUrl.fromLocalFile(str(qml_path)))
+    app.processEvents()
+    roots = engine.rootObjects()
+    if not roots:
+        controller.shutdown()
+        del engine
+        del app
+        print(json.dumps({"ok": False, "error": "QML root did not load"}))
+        return 7
+
+    deadline = time.monotonic() + 0.5
+    while time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+
+    working_set = _working_set_bytes()
+    payload = {
+        "ok": working_set is not None,
+        "idle_working_set_bytes": working_set,
+    }
+    print(json.dumps(payload), flush=True)
+    controller.shutdown()
+    del engine
+    del app
+    return 0 if working_set is not None else 7
 
 def performance_probe() -> int:
     """Measure process launch through QML readiness using this same build."""
@@ -390,7 +538,9 @@ def run_gui() -> int:
     app.setApplicationName("ML Lab")
     app.setApplicationDisplayName("Frankenhomie ML Lab")
 
-    configure_logging(user_config_dir() / "logs")
+    log_dir = user_config_dir() / "logs"
+    configure_logging(log_dir)
+    install_local_crash_handler(log_dir)
     controller = AppController()
     app.aboutToQuit.connect(controller.shutdown)
 

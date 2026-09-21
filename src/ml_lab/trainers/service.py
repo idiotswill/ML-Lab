@@ -41,6 +41,8 @@ class TrainingOption:
     default_text_key: str = "text"
     default_label_key: str = "class"
     uses_payload_keys: bool = True
+    reproducibility_mode: str = "DETERMINISTIC"
+    metric_tolerances: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +79,26 @@ def training_options(adapter_id: str) -> tuple[TrainingOption, ...]:
         for option in _BUILTIN_TRAINING_OPTIONS
         if adapter_id in option.adapter_ids
     )
+
+
+def packaged_reproducibility(
+    trainer_id: str,
+    runtime_pack_id: str,
+) -> dict[str, object] | None:
+    """Return the explicit reproducibility declaration for a packaged trainer."""
+    for option in _BUILTIN_TRAINING_OPTIONS:
+        if (
+            option.trainer_id == trainer_id
+            and option.runtime_pack_id == runtime_pack_id
+        ):
+            return {
+                "mode": option.reproducibility_mode,
+                "metric_tolerances": {
+                    metric_id: tolerance
+                    for metric_id, tolerance in option.metric_tolerances
+                },
+            }
+    return None
 
 
 class TrainingService:

@@ -22,6 +22,7 @@ from ml_lab.trainers.service import (
     SPARSE_RUNTIME_PACK_ID,
     SPARSE_TRAINER_ID,
     TrainingService,
+    packaged_reproducibility,
     training_options,
 )
 from ml_lab.trainers.sparse_nb import SparseNBModel
@@ -201,6 +202,16 @@ def test_training_options_expose_only_packaged_adapter_compatible_workers() -> N
     assert [option.trainer_id for option in phase_a] == [PHASE_A_TRAINER_ID]
     assert phase_a[0].runtime_pack_id == PHASE_A_RUNTIME_PACK_ID
     assert phase_a[0].uses_payload_keys is False
+    assert generic[0].reproducibility_mode == "DETERMINISTIC"
+    assert phase_a[0].reproducibility_mode == "DETERMINISTIC"
+    assert packaged_reproducibility(
+        SPARSE_TRAINER_ID,
+        SPARSE_RUNTIME_PACK_ID,
+    ) == {
+        "mode": "DETERMINISTIC",
+        "metric_tolerances": {},
+    }
+    assert packaged_reproducibility("unknown", "unknown") is None
     assert training_options("unknown-adapter") == ()
 
 
@@ -236,6 +247,48 @@ def test_training_service_stages_only_train_and_dev_then_completes(tmp_path: Pat
         metrics = ExperimentService(workspace).metrics(experiment_id)
         assert [metric.metric_id for metric in metrics] == ["dev_accuracy"]
         assert metrics[0].value == 1.0
+    finally:
+        service.shutdown()
+
+
+def test_same_frozen_inputs_config_and_seed_reproduce_model_and_metrics(
+    tmp_path: Path,
+) -> None:
+    workspace, first_id = _training_experiment(tmp_path)
+    experiments = ExperimentService(workspace)
+    first = experiments.get(first_id)
+    second = experiments.create(
+        project_id=first.project_id,
+        dataset_id=first.dataset_id,
+        trainer_id=first.trainer_id,
+        runtime_pack_id=first.runtime_pack_id,
+        config=json.loads(first.config_json),
+        seed=first.seed,
+    )
+    service = TrainingService(workspace)
+    try:
+        first_launch = service.launch(first.id)
+        first_state = _wait_for_training(service, first.id, first_launch.job.id)
+        second_launch = service.launch(second.id)
+        second_state = _wait_for_training(service, second.id, second_launch.job.id)
+
+        assert first_state.experiment.model_artifact_digest is not None
+        assert (
+            first_state.experiment.model_artifact_digest
+            == second_state.experiment.model_artifact_digest
+        )
+        first_metrics = [
+            (item.metric_id, item.value, item.direction, item.veto)
+            for item in experiments.metrics(first.id)
+        ]
+        second_metrics = [
+            (item.metric_id, item.value, item.direction, item.veto)
+            for item in experiments.metrics(second.id)
+        ]
+        assert first_metrics == second_metrics
+        assert first_metrics == [
+            ("dev_accuracy", 1.0, first_metrics[0][2], False)
+        ]
     finally:
         service.shutdown()
 

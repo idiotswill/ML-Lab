@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import time
+from pathlib import Path
+from typing import cast
+
+from ml_lab.core.config import AppConfig, user_config_dir
+
+_PAGE_NAMES = (
+    "projects",
+    "data-studio",
+    "experiments",
+    "compare",
+    "red-team-failures",
+    "models-registry",
+    "package-verify",
+    "jobs",
+    "diagnostics",
+    "settings",
+)
+
+
+def run_release_visual_smoke(output_dir: Path, theme: str) -> dict[str, object]:
+    if theme not in {"dark", "light"}:
+        raise ValueError("Visual smoke theme must be dark or light.")
+
+    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
+    if os.name == "nt":
+        os.environ["QT_QPA_PLATFORM"] = "windows"
+    else:
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ.setdefault("QSG_RHI_BACKEND", "software")
+
+    with tempfile.TemporaryDirectory(prefix="ml-lab-release-visual-") as temp:
+        temp_root = Path(temp)
+        if os.name == "nt":
+            os.environ["LOCALAPPDATA"] = str(temp_root / "config")
+        else:
+            os.environ["XDG_CONFIG_HOME"] = str(temp_root / "config")
+
+        AppConfig(theme=theme).save(user_config_dir() / "config.json")
+
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQml import QQmlApplicationEngine
+        from PySide6.QtQuick import QQuickWindow
+
+        from ml_lab.ui.controller import AppController
+
+        app = QGuiApplication(["ml-lab-release-visual-smoke"])
+        controller = AppController()
+        controller.openWorkspace(str(temp_root / "workspace"), True)
+
+        engine = QQmlApplicationEngine()
+        engine.rootContext().setContextProperty("appController", controller)
+        engine.setInitialProperties({"visualSmokeMode": True})
+        qml_path = Path(__file__).parent / "qml" / "Main.qml"
+        engine.load(QUrl.fromLocalFile(str(qml_path)))
+        app.processEvents()
+
+        roots = engine.rootObjects()
+        if not roots:
+            controller.shutdown()
+            return {"ok": False, "error": "QML root did not load"}
+
+        raw_window = roots[0]
+        if not isinstance(raw_window, QQuickWindow):
+            controller.shutdown()
+            return {"ok": False, "error": "QML root is not a QQuickWindow"}
+        window = raw_window
+
+        # The root is initialized hidden at 1366x768 before QML creation so the
+        # hosted Windows desktop cannot clamp the release-test viewport.
+        app.setQuitOnLastWindowClosed(False)
+        app.processEvents()
+
+        if window.isVisible():
+            controller.shutdown()
+            raise RuntimeError("Release visual smoke root unexpectedly became visible.")
+        if window.width() != 1366 or window.height() != 768:
+            controller.shutdown()
+            raise RuntimeError(
+                "Release visual smoke could not establish the required "
+                f"1366x768 logical viewport; got {window.width()}x{window.height()}."
+            )
+
+        scale = os.environ.get("QT_SCALE_FACTOR", "1")
+        scale_label = scale.replace(".", "_")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        captures: list[str] = []
+
+        window.setProperty("currentPage", 0)
+        app.processEvents()
+        onboarding_image = window.grabWindow()
+        onboarding_target = output_dir / (
+            f"{theme}-scale-{scale_label}-projects-onboarding.png"
+        )
+        if onboarding_image.isNull() or not onboarding_image.save(str(onboarding_target)):
+            controller.shutdown()
+            raise RuntimeError(
+                f"Could not capture release visual evidence: {onboarding_target}"
+            )
+        captures.append(onboarding_target.name)
+
+        controller.createProject("Release Visual Sample", "generic", "UX visual evidence")
+        app.processEvents()
+
+        for index, page_name in enumerate(_PAGE_NAMES):
+            if page_name == "jobs":
+                controller.runSelfTest()
+            window.setProperty("currentPage", index)
+            app.processEvents()
+            image = window.grabWindow()
+            target = output_dir / (
+                f"{theme}-scale-{scale_label}-{index:02d}-{page_name}.png"
+            )
+            if image.isNull() or not image.save(str(target)):
+                controller.shutdown()
+                raise RuntimeError(f"Could not capture release visual evidence: {target}")
+            captures.append(target.name)
+
+        def active_visual_jobs(
+            current_controller: AppController,
+        ) -> list[dict[str, object]]:
+            jobs = cast(list[dict[str, object]], current_controller.jobs)
+            return [
+                job
+                for job in jobs
+                if job.get("status") in {"QUEUED", "RUNNING"}
+            ]
+
+        active_jobs = active_visual_jobs(controller)
+        deadline = time.monotonic() + 5.0
+        while active_jobs and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.05)
+            active_jobs = active_visual_jobs(controller)
+
+        if active_jobs:
+            for job in active_jobs:
+                controller.cancelJob(str(job["id"]))
+            deadline = time.monotonic() + 5.0
+            while active_jobs and time.monotonic() < deadline:
+                app.processEvents()
+                time.sleep(0.05)
+                active_jobs = active_visual_jobs(controller)
+
+        if active_jobs:
+            controller.shutdown()
+            raise RuntimeError(
+                "Release visual smoke worker did not terminate before workspace teardown."
+            )
+
+        payload = {
+            "ok": True,
+            "theme": theme,
+            "scale_factor": scale,
+            "logical_width": int(window.width()),
+            "logical_height": int(window.height()),
+            "captures": captures,
+        }
+        (output_dir / f"{theme}-scale-{scale_label}-manifest.json").write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        controller.shutdown()
+        engine.rootContext().setContextProperty("appController", None)
+        window.close()
+        app.processEvents()
+        del onboarding_image
+        del image
+        del window
+        del raw_window
+        roots.clear()
+        del roots
+        del engine
+        controller.deleteLater()
+        app.processEvents()
+        del controller
+        app.processEvents()
+        del app
+        return payload

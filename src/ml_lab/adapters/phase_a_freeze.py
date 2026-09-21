@@ -111,8 +111,8 @@ def freeze_phase_a_train_dev(
     expected_counts.setdefault(DatasetSplit.TEST.value, 0)
     expected_counts.setdefault(DatasetSplit.REDTEAM.value, 0)
     actual_counts = {
-        split: int(row["example_count"])
-        for split, row in partition_rows.items()
+        item.split.value: item.example_count
+        for item in partitions
     }
     if actual_counts != expected_counts:
         raise RuntimeError(

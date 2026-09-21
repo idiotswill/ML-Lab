@@ -70,6 +70,7 @@ class FakeResult:
 
 
 def route_player_semantics(*, declaration, provider, **kwargs):
+    assert kwargs["allowed_action_families"] == ("SEARCH_INSPECT",)
     if declaration.startswith("residual"):
         try:
             provider.resolve(FakeRequest(declaration))
@@ -184,6 +185,7 @@ def test_fixture_export_preserves_zero_model_terminal_route(tmp_path: Path) -> N
     "mutation",
     (
         {"production_data": True},
+        {"allowed_action_families": ["HARM_TARGET"]},
         {
             "facts": [
                 {

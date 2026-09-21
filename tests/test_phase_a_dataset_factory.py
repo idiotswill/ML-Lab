@@ -97,13 +97,27 @@ def _request(declaration: str) -> dict[str, object]:
 
 class _FakeExporter:
     fail = False
+    calls = 0
+    leak_hidden = False
 
     def __init__(self, _workspace: Workspace):
         pass
 
     def export(self, *, repository: Path, ref: str, fixture: dict[str, object]):
         del repository
+        type(self).calls += 1
         request = _request(str(fixture["declaration"]))
+        if self.leak_hidden:
+            context = request["context"]
+            assert isinstance(context, dict)
+            context["campaign_facts"] = [
+                {
+                    "key": "campaign.entity.npc.hidden-observer",
+                    "value": "Hidden Observer",
+                    "source": "fixture:test",
+                    "visibility": "GM_ONLY",
+                }
+            ]
         if self.fail:
             return PhaseAFixtureExportReceipt(
                 status="TERMINATED_BEFORE_RESIDUAL",
@@ -132,7 +146,9 @@ class _FakeExporter:
             fixture_sha256="f" * 64,
             route="SEMANTIC_REQUIRED",
             failed_deterministic_stage="COMMITMENT:UNRESOLVED_DECLARATION",
-            request_sha256="a" * 64,
+            request_sha256=hashlib.sha256(
+                factory_module.canonical_json(request).encode("utf-8")
+            ).hexdigest(),
             request=request,
             fresh_process=True,
             ephemeral_sqlite_only=True,
@@ -237,6 +253,8 @@ def _write_protected(path: Path, text: str = "Protected held out wording.") -> P
 
 def _install_fakes(monkeypatch: pytest.MonkeyPatch) -> None:
     _FakeExporter.fail = False
+    _FakeExporter.calls = 0
+    _FakeExporter.leak_hidden = False
     monkeypatch.setattr(factory_module, "PhaseAFixtureExporter", _FakeExporter)
     monkeypatch.setattr(factory_module, "PhaseAReferenceValidator", _FakeReference)
 

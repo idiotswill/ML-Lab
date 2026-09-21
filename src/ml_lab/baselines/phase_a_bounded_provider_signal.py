@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping, Sequence
-from typing import cast
 from pathlib import Path
+from typing import cast
 
 from ml_lab.adapters.phase_a import (
     PHASE_A_ADAPTER_ID,

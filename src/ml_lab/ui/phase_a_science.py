@@ -312,9 +312,17 @@ class PhaseAScienceController(QObject):
     def providerExistingExperimentId(self) -> str:
         return self._provider_existing_experiment_id()
 
+    @Property(bool, notify=changed)
+    def developmentSplit(self) -> bool:
+        return self._split is DatasetSplit.DEV
+
     @Property(list, notify=changed)
     def baselineOptions(self) -> list[dict[str, object]]:
-        if not self._workspace or self._adapter_id != PHASE_A_ADAPTER_ID:
+        if (
+            not self._workspace
+            or self._adapter_id != PHASE_A_ADAPTER_ID
+            or self._split is DatasetSplit.DEV
+        ):
             return []
         record = self._selected_record()
         if record is None or record.contract_snapshot_id is None:
@@ -338,7 +346,11 @@ class PhaseAScienceController(QObject):
         if not self._workspace or self._adapter_id != PHASE_A_ADAPTER_ID:
             return
         normalized = split.strip().upper()
-        if normalized not in {DatasetSplit.TEST.value, DatasetSplit.REDTEAM.value}:
+        if normalized not in {
+            DatasetSplit.DEV.value,
+            DatasetSplit.TEST.value,
+            DatasetSplit.REDTEAM.value,
+        }:
             return
         clean_id = experiment_id.strip()
         if not clean_id:

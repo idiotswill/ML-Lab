@@ -121,6 +121,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--phase-a-build-expanded-dataset",
+        type=Path,
+        help=(
+            "Generate and authoritatively validate the expanded Phase A "
+            "TRAIN/DEV dataset into this directory."
+        ),
+    )
+    parser.add_argument(
         "--phase-a-generate-corpus",
         type=Path,
         help="Generate the expanded Phase A synthetic corpus into this directory.",
@@ -422,6 +430,39 @@ def main(argv: list[str] | None = None) -> int:
             return 23
         print(json.dumps(result, sort_keys=True))
         return 0
+    if args.phase_a_build_expanded_dataset:
+        if args.frankenhomie_repo is None:
+            print("--frankenhomie-repo is required", file=sys.stderr)
+            return 25
+        from ml_lab.adapters.phase_a_corpus import DEFAULT_CORPUS_PLAN
+        from ml_lab.adapters.phase_a_expanded_dataset import (
+            build_expanded_phase_a_dataset,
+        )
+
+        try:
+            output_root = args.phase_a_build_expanded_dataset.expanduser().resolve()
+            workspace = Workspace.create(output_root / "working-workspace")
+            result = build_expanded_phase_a_dataset(
+                workspace=workspace,
+                frankenhomie_repository=args.frankenhomie_repo,
+                output_dir=output_root,
+                plan_path=args.phase_a_corpus_plan or DEFAULT_CORPUS_PLAN,
+            )
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "integration_gate": "NO_GO",
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+            return 26
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result.get("ok") is True else 27
     if args.phase_a_generate_corpus:
         from ml_lab.adapters.phase_a_corpus import (
             DEFAULT_CORPUS_PLAN,

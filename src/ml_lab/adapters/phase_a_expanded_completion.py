@@ -39,6 +39,13 @@ def complete_expanded_phase_a(
             workspace_path=frozen_workspace,
         )
 
+    frozen_dataset = frozen.get("dataset") if isinstance(frozen, dict) else None
+    frozen_example_count = (
+        frozen_dataset.get("example_count")
+        if isinstance(frozen_dataset, dict)
+        else None
+    )
+
     base: dict[str, object] = {
         "schema": "ml-lab-phase-a-expanded-completion/1",
         "ok": protected.get("ok") is True and frozen is not None and frozen.get("ok") is True,
@@ -50,11 +57,7 @@ def complete_expanded_phase_a(
         "zero_model_passed_count": protected.get("zero_model_passed_count"),
         "protected_errors": protected.get("errors"),
         "frozen_payload_sha256": frozen.get("payload_sha256") if frozen else None,
-        "frozen_dataset_example_count": (
-            frozen.get("dataset", {}).get("example_count")
-            if isinstance(frozen, dict) and isinstance(frozen.get("dataset"), dict)
-            else None
-        ),
+        "frozen_dataset_example_count": frozen_example_count,
         "frozen": frozen is not None and frozen.get("frozen") is True,
         "model_training_started": False,
         "integration_gate": "NO_GO",

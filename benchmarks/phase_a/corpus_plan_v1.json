@@ -71,7 +71,7 @@
       "SEARCH_INSPECT": ["assess", "probe", "size up", "vet", "scope out", "parse"],
       "SPEECH_ONLY": ["consult", "converse with", "entreat", "salute", "counsel", "debrief"],
       "CAST_SPELL": ["hurl", "release", "weave", "summon", "focus", "spin"],
-      "USE_ITEM": ["drain", "sample", "partake of", "chug", "slug down", "take a pull from"],
+      "USE_ITEM": ["drain", "sample", "partake of", "chug", "slug down", "draw deeply from"],
       "INTERACT_OBJECT": [
         {"phrase": "prise {object} apart", "operation": "OPEN", "kind": "object"},
         {"phrase": "spread {object} wide", "operation": "OPEN", "kind": "object"},

@@ -1,10 +1,10 @@
-# v0.1.0-testing.5 Candidate / Testing Guide
+# v0.1.0-testing.5 Testing-Ready Guide
 
-This guide belongs to the complete Phase 4 Windows candidate. The candidate is not `TESTING_READY` until the representative-machine gate passes and a testing-ready release manifest is produced.
+This guide belongs to the Phase 4 Windows build that passed representative physical-Windows performance and fail-closed promotion. `v0.1.0-testing.5` is `TESTING_READY` for product testing only. `INTEGRATION_GATE = NO_GO` remains binding.
 
-## Candidate contents
+## Testing-ready contents
 
-The retained Phase 4 candidate artifact contains:
+The testing-ready handoff reuses the exact bytes from the retained Phase 4 candidate artifact:
 
 - `MLLab-Setup-v0.1.0-testing.5-x64.exe`;
 - `MLLab-v0.1.0-testing.5-windows-x64-portable.zip`;
@@ -14,32 +14,33 @@ The retained Phase 4 candidate artifact contains:
 - UX evidence;
 - `Run-Representative-Performance.cmd`.
 
-The candidate manifest must say:
+The original candidate manifest correctly remains historical evidence with `testing_ready: false` and `integration_gate: NO_GO`. The separate promotion manifest records `testing_ready: true`, `promotion_scope: PRODUCT_TESTING_ONLY`, `integration_gate: NO_GO`, and `model_integration_approved: false`.
 
-- `testing_ready: false`;
-- `integration_gate: NO_GO`.
+## Representative-machine gate — completed
 
-## Final representative-machine gate
+The full testing.5 physical receipt passed on Windows with the exact candidate executable SHA-256:
 
-Use the installer from the complete candidate artifact and keep the artifact folder available.
+`4af03345b9450a70429d68ceffce5f484bfba582043cc1d6afefe5fee2f89a9e`
 
-Install the application normally. The default installation is per-user under LocalAppData and does not require a separately installed Python.
+Key results:
 
-After installation, run:
+- startup: 1932.10 ms;
+- idle RAM: 125.93 MB;
+- 100k dataset paging remained bounded to 100 examples;
+- three navigation rounds: zero >100 ms GUI stalls;
+- 20k background import: zero >100 ms GUI stalls, max 92.85 ms;
+- worker-load navigation: zero >100 ms GUI stalls;
+- cancellation acknowledgement: 37.43 ms.
 
-`Run-Representative-Performance.cmd`
+Receipt SHA-256:
 
-The helper runs the full physical-machine gate against the installed `MLLab.exe` and writes:
+`63fb4aeef5b9191aaa5e6bcf84191d9b394aab6cf1fdf3124f89058786cd0f72`
 
-`MLLab-v0.1.0-testing.5-representative-performance.json`
+Testing-ready promotion manifest SHA-256:
 
-next to the helper.
+`02192d63c258daca77e98c79d1e0c96a789e0ccbab16fb7012b3a141b4f211d9`
 
-A passing receipt is evidence only. It does not integrate anything into Frankenhomie and does not self-authorize the release.
-
-Preserve the JSON receipt unchanged for testing-ready promotion/review.
-
-Full physical mode runs three independent ordinary-navigation rounds. The 100 ms GUI-thread threshold is unchanged; the written "repeatable" gate fails when an over-threshold GUI stall recurs in at least two rounds. Scheduler delays are recorded separately and cannot be mislabeled as GUI-thread work.
+The promoter reused the exact tested installer and portable bytes; it did not rebuild them.
 
 ## After testing-ready promotion
 

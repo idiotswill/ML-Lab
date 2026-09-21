@@ -26,7 +26,11 @@ jobs:
 
       - name: Fixture bridge and seed checks
         run: |
-          uv run pytest -q tests/test_phase_a_fixture_export.py tests/test_phase_a_fixture_seed.py tests/test_phase_a_fixture_seed_evidence.py tests/test_phase_a_fixture_evidence_cli.py tests/test_phase_a_baselines.py tests/test_phase_a_baseline_cli.py tests/test_phase_a_dataset_factory.py tests/test_phase_a_dataset_factory_cli.py tests/test_phase_a_freeze.py tests/test_phase_a_freeze_cli.py tests/test_phase_a_first_experiment.py tests/test_phase_a_first_experiment_cli.py tests/test_phase_a_candidate_sparse.py tests/test_phase_a_candidate_experiment_cli.py tests/test_training_service.py
+          uv run pytest -q tests/test_phase_a_fixture_export.py tests/test_phase_a_fixture_seed.py tests/test_phase_a_fixture_seed_evidence.py tests/test_phase_a_fixture_evidence_cli.py tests/test_phase_a_baselines.py tests/test_phase_a_baseline_cli.py tests/test_phase_a_dataset_factory.py tests/test_phase_a_dataset_factory_cli.py tests/test_phase_a_freeze.py tests/test_phase_a_freeze_cli.py tests/test_phase_a_first_experiment.py tests/test_phase_a_first_experiment_cli.py tests/test_phase_a_candidate_sparse.py tests/test_phase_a_candidate_experiment_cli.py tests/test_training_service.py tests/test_compare.py tests/test_phase_a_science.py
+
+      - name: GUI visual smoke
+        run: |
+          uv run python -c "from pathlib import Path; from ml_lab.ui.release_visual_smoke import run_release_visual_smoke; r=run_release_visual_smoke(Path('visual-smoke'),'dark'); assert r['ok']"
 
       - name: Pinned integration disclosure
         run: |

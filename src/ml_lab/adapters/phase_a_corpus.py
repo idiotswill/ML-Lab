@@ -643,7 +643,6 @@ def _zero_model_cases(
     per_category = count // len(categories)
     for category_index, category in enumerate(categories):
         for variant in range(per_category):
-            index = category_index * per_category + variant
             scene_id = scene_ids[variant % len(scene_ids)]
             details = _mapping(scenes[scene_id], "details")
             declaration = _zero_model_declaration(

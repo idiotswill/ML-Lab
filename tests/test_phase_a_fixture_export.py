@@ -10,7 +10,34 @@ from ml_lab.adapters.phase_a_fixture_export import PhaseAFixtureExporter
 from ml_lab.storage.workspace import Workspace
 
 _FAKE_DB = """
-SCHEMA = "CREATE TABLE IF NOT EXISTS fixture_marker (id INTEGER);"
+SCHEMA = '''
+CREATE TABLE IF NOT EXISTS fixture_marker (id INTEGER);
+CREATE TABLE IF NOT EXISTS players (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  pc_name TEXT NOT NULL,
+  class_name TEXT NOT NULL,
+  level INTEGER NOT NULL,
+  hp INTEGER NOT NULL,
+  hp_max INTEGER NOT NULL,
+  ac INTEGER NOT NULL,
+  resources_json TEXT NOT NULL,
+  resource_max_json TEXT NOT NULL,
+  sheet_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  id INTEGER PRIMARY KEY,
+  session_number INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL,
+  scene TEXT NOT NULL,
+  location TEXT NOT NULL
+);
+'''
+
+def utcnow():
+    return "2026-09-21T00:00:00+00:00"
 
 def _execute_sql_script(conn, script):
     conn.executescript(script)
@@ -80,6 +107,9 @@ class FakeResult:
 
 def route_player_semantics(conn, *, declaration, provider, **kwargs):
     assert kwargs["allowed_action_families"] == ("SEARCH_INSPECT",)
+    actor_id = kwargs["actor_id"]
+    assert conn.execute("SELECT id FROM players WHERE id=?", (actor_id,)).fetchone()
+    assert conn.execute("SELECT id FROM sessions WHERE id=1").fetchone()
     assert conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='fixture_legacy_migration'"
     ).fetchone()

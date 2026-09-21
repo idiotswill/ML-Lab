@@ -374,6 +374,14 @@ def test_phase_a_candidate_training_worker_is_train_only_and_rebinds_current_can
             "I clobber Guard",
             "combatant:guard",
         )
+        current_request["failed_deterministic_stage"] = (
+            "COMMITMENT:UNRESOLVED_DECLARATION"
+        )
+        assessment = current_request["assessment"]
+        assert isinstance(assessment, dict)
+        assessment["model_required_because"] = (
+            "COMMITMENT:UNRESOLVED_DECLARATION"
+        )
         proposal = predict_phase_a_candidate_sparse(model, current_request)
         assert proposal["decision"] == "RESOLVE"
         assert proposal["slots"] == [

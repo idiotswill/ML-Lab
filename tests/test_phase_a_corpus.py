@@ -235,3 +235,19 @@ def test_phase_a_corpus_rejects_deterministic_term_in_residual_lexicon(
             output_dir=tmp_path / "out",
             plan_path=plan_path,
         )
+
+
+
+def test_phase_a_corpus_rejects_framing_shape_in_residual_lexicon(
+    tmp_path: Path,
+) -> None:
+    plan = json.loads(DEFAULT_CORPUS_PLAN.read_text(encoding="utf-8"))
+    plan["resolve_lexicons"]["TEST"]["SPEECH_ONLY"][4] = "appeal to"
+    plan_path = tmp_path / "bad-framing-plan.json"
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="framing/infinitival abstention shape"):
+        generate_phase_a_corpus(
+            output_dir=tmp_path / "out",
+            plan_path=plan_path,
+        )

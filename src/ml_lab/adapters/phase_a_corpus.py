@@ -1037,12 +1037,37 @@ def _assert_resolve_lexicons_are_residual_only(
                     raise ValueError("Corpus lexicon entries must be strings or objects")
             for phrase in phrases:
                 normalized = phrase.casefold()
+                _assert_residual_phrase_shape(
+                    split=split.value,
+                    family=family,
+                    phrase=phrase,
+                    normalized=normalized,
+                )
                 for term in _DETERMINISTIC_TERMS:
                     if re.search(rf"(?<!\w){re.escape(term)}(?!\w)", normalized):
                         raise ValueError(
                             f"{split.value}.{family} residual lexicon phrase "
                             f"{phrase!r} contains deterministic term {term!r}"
                         )
+
+
+def _assert_residual_phrase_shape(
+    *,
+    split: str,
+    family: str,
+    phrase: str,
+    normalized: str,
+) -> None:
+    lexical = re.sub(r"\{[a-z_]+\}", "entity", normalized)
+    lexical = re.sub(r"\s+", " ", lexical).strip()
+    if re.match(
+        r"^[a-z]+(?:\s+[a-z]+ly)?\s+(?:to|that|whether|if|[a-z]+ing)\b",
+        lexical,
+    ):
+        raise ValueError(
+            f"{split}.{family} residual lexicon phrase {phrase!r} "
+            "matches Frankenhomie's framing/infinitival abstention shape"
+        )
 
 
 def _assert_unique_case_ids(

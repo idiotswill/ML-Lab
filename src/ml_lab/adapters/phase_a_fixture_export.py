@@ -224,6 +224,7 @@ def run_phase_a_fixture_export_child(spec_path: Path) -> int:
         execute_sql_script = cast(Any, db_namespace["_execute_sql_script"])
         legacy_migrate = cast(Any, db_namespace["_legacy_migrate"])
         run_migrations = cast(Any, db_namespace["_run_migrations"])
+        utcnow = cast(Any, db_namespace["utcnow"])
         route_player_semantics = cast(Any, routing_namespace["route_player_semantics"])
         turn_fact_type = cast(Any, orchestrator_namespace["TurnFact"])
         registered_semantic_families = cast(
@@ -237,6 +238,32 @@ def run_phase_a_fixture_export_child(spec_path: Path) -> int:
             execute_sql_script(conn, schema)
             legacy_migrate(conn)
             run_migrations(conn)
+            actor_id = str(fixture["actor_id"])
+            now = str(utcnow())
+            conn.execute(
+                "INSERT INTO players("
+                "id,name,pc_name,class_name,level,hp,hp_max,ac,"
+                "resources_json,resource_max_json,sheet_json,updated_at"
+                ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    actor_id,
+                    "ML Lab fixture player",
+                    "ML Lab Fixture PC",
+                    "Fixture",
+                    1,
+                    1,
+                    1,
+                    10,
+                    "{}",
+                    "{}",
+                    "{}",
+                    now,
+                ),
+            )
+            conn.execute(
+                "INSERT INTO sessions(id,session_number,title,status,scene,location) "
+                "VALUES(1,1,'ML Lab Phase A fixture','active','Non-canon fixture','fixture')"
+            )
             database_rows = conn.execute("PRAGMA database_list").fetchall()
             if any(str(row[2] or "") for row in database_rows):
                 raise RuntimeError("Fixture export opened a file-backed SQLite database")

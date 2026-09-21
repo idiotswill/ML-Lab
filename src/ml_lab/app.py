@@ -83,6 +83,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--phase-a-build-dataset",
+        type=Path,
+        help="Build protected Phase A TRAIN/DEV candidate data into this directory.",
+    )
+    parser.add_argument(
+        "--phase-a-dataset-seed",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--phase-a-protected-seed",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--verify-bundle-worker",
         type=Path,
         help=argparse.SUPPRESS,
@@ -250,6 +265,45 @@ def main(argv: list[str] | None = None) -> int:
             return 15
         print(json.dumps(result, sort_keys=True))
         return 0
+    if args.phase_a_build_dataset:
+        if args.frankenhomie_repo is None:
+            print("--frankenhomie-repo is required", file=sys.stderr)
+            return 16
+        from ml_lab.adapters.phase_a_dataset_factory import (
+            DEFAULT_PROTECTED_SEED,
+            DEFAULT_SYNTHETIC_SEED,
+            run_phase_a_dataset_factory,
+        )
+
+        seed_path = args.phase_a_dataset_seed or DEFAULT_SYNTHETIC_SEED
+        protected_seed_path = (
+            args.phase_a_protected_seed or DEFAULT_PROTECTED_SEED
+        )
+        try:
+            with tempfile.TemporaryDirectory(prefix="ml-lab-phase-a-dataset-") as temp:
+                workspace = Workspace.create(Path(temp) / "workspace")
+                result = run_phase_a_dataset_factory(
+                    workspace=workspace,
+                    frankenhomie_repository=args.frankenhomie_repo,
+                    output_dir=args.phase_a_build_dataset,
+                    seed_path=seed_path,
+                    protected_seed_path=protected_seed_path,
+                )
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "integration_gate": "NO_GO",
+                    },
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+            return 17
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result.get("ok") is True else 18
     if args.verify_bundle_worker:
         if args.verification_receipt is None:
             print("--verification-receipt is required", file=sys.stderr)

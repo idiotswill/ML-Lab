@@ -7,6 +7,7 @@ import sys
 import time
 from pathlib import Path
 
+from ml_lab.contracts.snapshot import ContractSnapshotService
 from ml_lab.core.models import (
     TERMINAL_JOB_STATUSES,
     DatasetSplit,
@@ -14,6 +15,7 @@ from ml_lab.core.models import (
     JobStatus,
 )
 from ml_lab.datasets.leakage import canonical_json
+from ml_lab.datasets.service import DatasetService
 from ml_lab.evaluation.phase_a_metrics import summarize_phase_a_experiment
 from ml_lab.evaluation.runners import evaluate_phase_a_sparse_experiment
 from ml_lab.experiments.service import ExperimentService
@@ -52,6 +54,32 @@ def run_phase_a_first_sparse_experiment(
     dataset_id = _required_text(dataset_info, "id")
     contract_info = _mapping(freeze_receipt, "contract_snapshot")
     contract_snapshot_id = _required_text(contract_info, "id")
+
+    datasets = DatasetService(workspace)
+    frozen_dataset = datasets.get(dataset_id)
+    if frozen_dataset.project_id != project_id:
+        raise ValueError("Freeze receipt project does not own the frozen dataset")
+    if frozen_dataset.state.value != "FROZEN":
+        raise ValueError("Workspace dataset is no longer FROZEN")
+    if frozen_dataset.contract_snapshot_id != contract_snapshot_id:
+        raise ValueError("Frozen dataset contract snapshot does not match freeze receipt")
+    actual_handles = datasets.trainer_partition_handles(dataset_id)
+    receipt_handles = {
+        str(key): str(value)
+        for key, value in _mapping(freeze_receipt, "trainer_handles").items()
+    }
+    if actual_handles != receipt_handles:
+        raise ValueError("Frozen trainer handles do not match freeze receipt")
+
+    snapshot = ContractSnapshotService(workspace).get(contract_snapshot_id)
+    if snapshot.project_id != project_id:
+        raise ValueError("Freeze receipt project does not own the contract snapshot")
+    if snapshot.adapter_id != "frankenhomie.phase-a-residual":
+        raise ValueError("Frozen contract snapshot is not the Phase A residual adapter")
+    if snapshot.commit_sha != freeze_receipt.get("target_frankenhomie_commit"):
+        raise ValueError("Frozen contract commit does not match freeze receipt")
+    if snapshot.contract_version != freeze_receipt.get("target_contract"):
+        raise ValueError("Frozen contract version does not match freeze receipt")
 
     experiments = ExperimentService(workspace)
     experiment = experiments.create(
@@ -210,6 +238,19 @@ def run_phase_a_first_sparse_experiment(
 def _validate_freeze_receipt(receipt: dict[str, object]) -> None:
     if receipt.get("schema") != "ml-lab-phase-a-freeze-receipt/1":
         raise ValueError("Unsupported Phase A freeze receipt schema")
+    claimed_payload = receipt.get("payload_sha256")
+    if not isinstance(claimed_payload, str) or len(claimed_payload) != 64:
+        raise ValueError("Phase A freeze receipt payload SHA-256 is missing")
+    base_receipt = {
+        key: value
+        for key, value in receipt.items()
+        if key != "payload_sha256"
+    }
+    observed_payload = hashlib.sha256(
+        canonical_json(base_receipt).encode("utf-8")
+    ).hexdigest()
+    if observed_payload != claimed_payload:
+        raise ValueError("Phase A freeze receipt payload SHA-256 mismatch")
     if receipt.get("ok") is not True or receipt.get("frozen") is not True:
         raise ValueError("Phase A first experiment requires a clean frozen dataset")
     if receipt.get("ordinary_dataset_service") is not True:

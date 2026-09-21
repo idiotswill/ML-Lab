@@ -1,0 +1,52 @@
+{
+  "schema": "ml-lab-phase-a-experiment-evidence/1",
+  "status": "PRESERVED_EXPERIMENT_RESULT",
+  "stage": "EXPERIMENT",
+  "target_frankenhomie_commit": "1ff3e2155a3c2d2b316023e9933edf3a6d53697f",
+  "target_contract": "semantic-residual-v2",
+  "freeze_receipt_payload_sha256": "c4bbc4cb64f39ca7568d93d5f9e695b54e21ab3363d43f5e5b093790648f22ef",
+  "experiment_receipt_payload_sha256": "e3da79bdfd246afd8d30235239b67e06a3f52785c6486b4d5434f737b8b8b775",
+  "trainer_id": "builtin.phase_a_candidate_sparse.v1",
+  "model": {
+    "kind": "phase-a-candidate-relative-sparse-v1",
+    "sha256": "b913ec7b3a1c0d7742737518dff72765ae25fcd1cb90dca41e370e38da2dd5d7",
+    "size_bytes": 17658
+  },
+  "training": {
+    "train_artifact_digest": "da524b5c911b69dd2cf726858a5556f327ae682233701ed55e55e337799edbaa",
+    "dev_used": false,
+    "test_used": false,
+    "redteam_used": false,
+    "candidate_identity_learned_as_class": false,
+    "candidate_binding_mode": "CURRENT_VISIBLE_ENVELOPE_EXPLICIT_MENTION_ONLY"
+  },
+  "dev": {
+    "total": 6,
+    "correct": 5,
+    "failures": 1,
+    "veto_failures": 1,
+    "resolution_precision": 0.75,
+    "useful_resolution_coverage": 0.5,
+    "ask_player_accuracy": 1.0,
+    "decision_accuracy": 1.0,
+    "family_slot_accuracy": 0.75,
+    "false_commitments": 1,
+    "contract_failures": 0,
+    "zero_model_route_violations": 0,
+    "hidden_or_out_of_envelope": 0,
+    "unsupported_mechanics_authority": 0,
+    "mean_latency_ms": 1376.6886666659655,
+    "p95_latency_ms": 1443.115599999146,
+    "failure_cases": [
+      {
+        "example_id": "dev-move-make-for-landing",
+        "kind": "FALSE_COMMITMENT",
+        "severity": "VETO",
+        "evidence_artifact_digest": "b634496a54e08fe250c87ef1f110408c6614d2a5edd9d965149a29b967d1d3b2"
+      }
+    ]
+  },
+  "interpretation": "Candidate-relative scoring fixes the novel-entity generalization failure and preserves ambiguity abstention, but one semantically wrong RESOLVE remains a veto-level false commitment. Promotion is blocked.",
+  "promotion_allowed": false,
+  "integration_gate": "NO_GO"
+}
